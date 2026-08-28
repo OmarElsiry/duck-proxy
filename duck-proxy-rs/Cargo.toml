@@ -1,0 +1,54 @@
+[package]
+name = "duck-proxy-rs"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance asynchronous OpenAI-compatible proxy for Duck.ai"
+authors = ["Teamwork"]
+default-run = "duck-proxy-rs"
+
+[lib]
+name = "duck_proxy_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "duck-proxy-rs"
+path = "src/main.rs"
+
+[dependencies]
+# Async Runtime & Web Server Framework
+tokio = { version = "1.40", features = ["full"] }
+axum = { version = "0.7", features = ["macros"] }
+tower = { version = "0.5", features = ["util", "timeout"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tokio-stream = "0.1"
+futures = "0.3"
+
+# HTTP Client & Networking
+reqwest = { version = "0.12", features = ["json", "stream", "cookies"] }
+
+# JavaScript Execution Engine (V8)
+deno_core = "0.310"
+
+# Cryptography & Hashing
+rsa = { version = "0.9", features = ["sha2"] }
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+
+# Serialization & Deserialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Observability, Error Handling & Utilities
+uuid = { version = "1.10", features = ["v4", "fast-rng"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1.0"
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+[dev-dependencies]
+wiremock = "0.6"
+tempfile = "3.10"
+http-body-util = "0.1"

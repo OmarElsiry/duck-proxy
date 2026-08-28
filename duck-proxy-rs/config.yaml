@@ -1,0 +1,19 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+model_list:
+  - model_name: gpt-5.6-luna
+    duck_model: gpt-5.6-luna
+  - model_name: gpt5
+    duck_model: gpt-5.6-luna
+  - model_name: gpt5_mini
+    duck_model: gpt-5.4-mini
+  - model_name: gemma
+    duck_model: tinfoil/gemma4-31b
+  - model_name: claude
+    duck_model: claude-haiku-4-5
+  - model_name: mistral
+    duck_model: mistral-small-2603
+  - model_name: image
+    duck_model: image-generation
