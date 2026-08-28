@@ -1,0 +1,22 @@
+# Rust build artifacts
+target/
+**/target/
+Cargo.lock.bak
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+
+# Agents & Internal logs
+.agents/
+*.log
+
+# OS / Editor artifacts
+.DS_Store
+.vscode/
+.idea/
+*.swp

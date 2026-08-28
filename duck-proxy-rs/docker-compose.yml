@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  duck-proxy:
+    build: .
+    container_name: duck-proxy
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - RUST_LOG=duck_proxy_rs=info,tower_http=info
