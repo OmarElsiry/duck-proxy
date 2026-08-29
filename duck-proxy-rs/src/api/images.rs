@@ -4,7 +4,7 @@ use axum::{extract::State, Json};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::duck::{build_chat_payload, parse_sse_line, DuckChatMessage, SseEvent, IMAGE_GEN_CHAT_MODEL};
+use crate::duck::{build_chat_payload, DuckChatMessage, IMAGE_GEN_CHAT_MODEL};
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -72,39 +72,80 @@ pub async fn generate_image(
         AppError::bad_gateway(format!("Failed to read upstream image response: {}", e))
     })?;
 
-    let mut accumulated_b64 = String::new();
+    let mut partials: Vec<String> = Vec::new();
+    let mut final_image: Option<String> = None;
+
     for line in body.lines() {
-        if let Some(event) = parse_sse_line(line) {
-            match event {
-                SseEvent::ImageData(chunk) => {
-                    let clean = if chunk.starts_with("data:image/") {
-                        if let Some((_, b64_part)) = chunk.split_once(',') {
-                            b64_part
-                        } else {
-                            &chunk
-                        }
-                    } else {
-                        &chunk
-                    };
-                    accumulated_b64.push_str(clean);
+        let line = line.trim();
+        if line.is_empty() || line.starts_with(':') {
+            continue;
+        }
+        let data = if let Some(stripped) = line.strip_prefix("data: ") {
+            stripped
+        } else if let Some(stripped) = line.strip_prefix("data:") {
+            stripped.trim_start()
+        } else {
+            continue;
+        };
+
+        if data == "[DONE]" {
+            break;
+        }
+
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+            if let Some(err_action) = json.get("action").and_then(|v| v.as_str()) {
+                if err_action == "error" {
+                    let msg = json
+                        .get("message")
+                        .or_else(|| json.get("type"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown upstream error");
+                    return Err(AppError::bad_gateway(format!("Upstream error: {}", msg)));
                 }
-                SseEvent::Done => break,
-                SseEvent::Error(e) => {
-                    return Err(AppError::bad_gateway(format!("Upstream error: {}", e)));
+            }
+
+            if let Some(b64) = json.get("b64Image").and_then(|v| v.as_str()) {
+                if !b64.is_empty() {
+                    final_image = Some(b64.to_string());
                 }
-                _ => {}
+            } else if let Some(b64) = json
+                .get("data")
+                .and_then(|d| d.get("b64Image"))
+                .and_then(|v| v.as_str())
+            {
+                if !b64.is_empty() {
+                    final_image = Some(b64.to_string());
+                }
+            } else if let Some(role) = json.get("role").and_then(|v| v.as_str()) {
+                if let Some(res) = json.get("result").and_then(|v| v.as_str()) {
+                    if role == "generated-image" || role == "image" || role == "ui-component" {
+                        final_image = Some(res.to_string());
+                    } else if role == "partial-image" {
+                        partials.push(res.to_string());
+                    }
+                }
             }
         }
     }
 
-    if !accumulated_b64.is_empty() {
-        Ok(Json(ImageGenerationResponse {
-            created: Utc::now().timestamp(),
-            data: vec![ImageData {
-                b64_json: accumulated_b64,
-            }],
-        }))
+    let raw_b64 = if let Some(f) = final_image {
+        f
+    } else if !partials.is_empty() {
+        partials.concat()
     } else {
-        Err(AppError::bad_gateway("No image data received from upstream"))
-    }
+        return Err(AppError::bad_gateway("No image data received from upstream"));
+    };
+
+    let clean_b64 = if raw_b64.starts_with("data:") && raw_b64.contains(',') {
+        raw_b64.split_once(',').map(|(_, b)| b.to_string()).unwrap_or(raw_b64)
+    } else {
+        raw_b64
+    };
+
+    Ok(Json(ImageGenerationResponse {
+        created: Utc::now().timestamp(),
+        data: vec![ImageData {
+            b64_json: clean_b64,
+        }],
+    }))
 }
