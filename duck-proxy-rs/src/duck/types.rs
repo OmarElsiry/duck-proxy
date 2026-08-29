@@ -64,6 +64,8 @@ pub struct DuckChatRequest {
     pub reasoning_effort: String,
     pub can_use_approx_location: Option<bool>,
     pub can_delegate_image_generation: Option<bool>,
+    pub can_use_web_search: bool,
+    pub can_upload_files: Option<bool>,
     pub durable_stream: DurableStream,
 }
 
@@ -123,6 +125,8 @@ mod tests {
             reasoning_effort: "none".to_string(),
             can_use_approx_location: None,
             can_delegate_image_generation: None,
+            can_use_web_search: true,
+            can_upload_files: None,
             durable_stream: DurableStream {
                 message_id: "abc".to_string(),
                 conversation_id: "def".to_string(),

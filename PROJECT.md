@@ -1,129 +1,103 @@
-# Project: Duck.ai OpenAI-Compatible Rust Proxy (`duck-proxy-rs`)
+# Project: Duck-Proxy Live Simulation & E2E Verification Framework
 
 ## Architecture
-A high-performance, asynchronous, zero-lag OpenAI-compatible proxy server for Duck.ai implemented in Rust within `duck-proxy-rs/`.
-- **Axum 0.7 Web Framework**: Exposes OpenAI REST endpoints (`/v1/models`, `/v1/chat/completions`, `/v1/images/generations`).
-- **Dedicated V8 OS Worker Thread**: Runs `deno_core::JsRuntime` with browser DOM stubs to solve `x-vqd-hash-1` JavaScript challenges asynchronously without blocking the Tokio runtime.
-- **Crypto & Telemetry**: Generates ephemeral 2048-bit RSA keypairs in RFC 7517 JWK format and generates realistic browser telemetry headers (`x-fe-version`, `x-ddg-journey-id`, `x-fe-signals`).
-- **Duck.ai Client & Stream Engine**: Handles VQD token chaining (`Arc<RwLock<Option<String>>>`), status token polling with 429 exponential backoff, SSE stream parsing, non-streaming buffering, and base64 image extraction.
-- **Hermetic Mock Testing Framework**: Uses `wiremock` to test all protocol features deterministically across 5 tiers without external network dependency.
+The simulation framework is completely isolated within `/home/potterparker/Desktop/prjcts/duck-proxy/tests_simulation/`.
+It validates the live `duck-proxy-rs` server running at `http://127.0.0.1:8080/v1` using an automated multi-turn Codex CLI agent executing realistic software engineering scenarios against a genuine mock multi-file Python codebase ("TaskPulse").
 
-## Code Layout
-All Rust code, tests, configs, and manifests are strictly isolated in `duck-proxy-rs/`:
-```text
-duck-proxy-rs/
-├── Cargo.toml
-├── config.yaml
-├── README.md
-├── src/
-│   ├── main.rs            # Server startup, signal handling, router setup
-│   ├── config.rs          # YAML configuration & model alias resolver
-│   ├── error.rs           # OpenAI AppError format & axum IntoResponse
-│   ├── state.rs           # AppState (DuckClient, Config, V8ActorHandle)
-│   ├── api/
-│   │   ├── mod.rs         # Router assembly
-│   │   ├── models.rs      # GET /v1/models handler
-│   │   ├── chat.rs        # POST /v1/chat/completions (stream & non-stream)
-│   │   └── images.rs      # POST /v1/images/generations handler
-│   ├── duck/
-│   │   ├── mod.rs
-│   │   ├── models.rs      # Model definitions, aliases, capabilities
-│   │   ├── types.rs       # Wire request/response types
-│   │   ├── payload.rs     # Duck.ai payload builder
-│   │   ├── stream.rs      # SSE stream parser, chunk filter & image extractor
-│   │   └── client.rs      # Token chaining, backoff, HTTP client
-│   ├── v8/
-│   │   ├── mod.rs
-│   │   ├── stubs.rs       # Browser environment stubs (window, document, navigator)
-│   │   └── actor.rs       # Dedicated OS thread actor with mpsc/oneshot channels
-│   └── crypto/
-│       ├── mod.rs
-│       └── jwk.rs         # Ephemeral RSA-OAEP-256 JWK generator
-└── tests/
-    ├── common/
-    │   ├── mod.rs
-    │   └── mock_upstream.rs # Wiremock upstream Duck.ai emulator
-    ├── e2e_tier1_features.rs
-    ├── e2e_tier2_boundaries.rs
-    ├── e2e_tier3_combinations.rs
-    └── e2e_tier4_realworld.rs
+```
+[ duck-proxy-rs (Axum 0.7 @ :8080) ]
+               ▲
+               │ OpenAI HTTP / SSE (/v1/models, /v1/chat/completions, /v1/images/generations)
+               ▼
+[ Codex CLI Assistant Engine ] ─── interacts with ───► [ Mock Target: TaskPulse ]
+ (Streaming Parser + Tool Calling)                       (Async Queue, Workers, Tests)
+               │
+               ▼
+[ Simulation Scenarios Runner (19 Turns) ] ───► [ Stress & Concurrency Diagnostics ]
+               │
+               ▼
+[ Metric Sampler (psutil) & Report Generator ] ───► tests_simulation/SIMULATION_REPORT.md
 ```
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |
 |---|---------|-------------|-----------|--------|
-| 1 | Cargo & Config Scaffolding | Cargo manifest, `config.yaml`, and YAML config parsing | M1 | ORIGINAL_REQUEST §2, §6 |
-| 2 | OpenAI Error Handling | Standardized OpenAI error JSON formatting (`AppError`) | M1 | ORIGINAL_REQUEST §3 |
-| 3 | Ephemeral RSA JWK Generator | 2048-bit RSA-OAEP-256 keypair with unpadded base64url JWK export | M1 | ORIGINAL_REQUEST §4.D |
-| 4 | Browser Stubs Definition | `stubs.js` embedded browser DOM environment for V8 | M1 | ORIGINAL_REQUEST §4.B |
-| 5 | V8 Challenge Solver Actor | Dedicated OS worker thread with `deno_core::JsRuntime` and mpsc actor loop | M2 | ORIGINAL_REQUEST §4.B |
-| 6 | Challenge Execution & Metadata | Decode base64 challenge, execute in V8, inject UA SHA-256, origin, stack, duration | M2 | ORIGINAL_REQUEST §4.B |
-| 7 | Duck.ai Model Registry | Model definitions, aliases, capabilities, and reasoning effort mapping | M3 | ORIGINAL_REQUEST §4, §6 |
-| 8 | Telemetry Signals Generator | `x-fe-version`, `x-ddg-journey-id`, and `x-fe-signals` payload generation | M3 | ORIGINAL_REQUEST §4.C |
-| 9 | Duck.ai Wire Payload Builder | Chat wire payload construction with `durableStream.publicKey` | M3 | ORIGINAL_REQUEST §4.D |
-| 10 | VQD Token Chaining & 429 Retry | `/duckchat/v1/status` initial polling and `x-vqd-hash-1` token chaining | M3 | ORIGINAL_REQUEST §4.E |
-| 11 | SSE Stream Parser & Filter | Parse `data:` lines, filter control frames (`[PING]`, `[LIMIT]`, `[CHAT_TITLE]`) | M4 | ORIGINAL_REQUEST §4, §5 |
-| 12 | Image Generation & Extraction | Map `/v1/images/generations` to `gpt-5.6-luna` + `GenerateImage: true`, extract `b64Image` | M4 | ORIGINAL_REQUEST §5.3 |
-| 13 | Axum OpenAI API Endpoints | `GET /v1/models`, `POST /v1/chat/completions` (stream/non-stream), `POST /v1/images/generations` | M4 | ORIGINAL_REQUEST §5 |
-| 14 | Axum Server Lifecycle | Main entrypoint, routing, tracing, CORS, graceful shutdown | M4 | ORIGINAL_REQUEST §3 |
-| 15 | E2E Mock Upstream Infrastructure | Hermetic wiremock-based test harness (`MockDuckServer`) | E2E Track | ORIGINAL_REQUEST §2, Acceptance |
-| 16 | E2E Tier 1 Feature Coverage Tests | Integration tests for models, streaming/non-streaming chat, images, VQD, JWK | E2E Track | Acceptance Criteria |
-| 17 | E2E Tier 2 Boundary & Corner Tests | Error handling, empty inputs, 429 backoff, malformed challenges, upstream drops | E2E Track | Acceptance Criteria |
-| 18 | E2E Tier 3 Combination Tests | Multi-turn VQD chaining, model alias switching, stream abortion | E2E Track | Acceptance Criteria |
-| 19 | E2E Tier 4 Real-World Workload Tests | Full OpenAI client simulation, code streaming, concurrency stress | E2E Track | Acceptance Criteria |
-| 20 | E2E 100% Pass & Tier 5 Hardening | 100% pass of Tiers 1-4 tests followed by Tier 5 adversarial coverage hardening | M5 | Acceptance Criteria |
+| F1 | Proxy Lifecycle & Health Harness | Spawns/manages `duck-proxy-rs`, probes `GET /v1/models`, captures stderr/stdout, clean shutdown | M1 | ORIGINAL_REQUEST §R1 |
+| F2 | System Metric & Memory Sampler | Background thread measuring RSS (MB), CPU%, open FDs, thread counts during test execution | M1 | ORIGINAL_REQUEST §R1, R4 |
+| F3 | Codex CLI OpenAI SSE Client | Connects to `http://127.0.0.1:8080/v1`, streams SSE tokens, tracks TTFT & chunk latencies | M2 | ORIGINAL_REQUEST §R2 |
+| F4 | Codex Assistant Tool Engine | Executes `view_file`, `patch_file`, `write_file`, `list_files`, `run_tests` in mock workspace | M2 | ORIGINAL_REQUEST §R2 |
+| F5 | Multi-Model Protocol Switcher | Seamlessly switches between `gpt5`, `claude`, `mistral`, and `image` model endpoints | M2 | ORIGINAL_REQUEST §R2 |
+| F6 | Mock Target Codebase: TaskPulse | Multi-file async task queue engine with models, worker pools, storage, dispatcher, and unit tests | M3 | ORIGINAL_REQUEST §R3 |
+| F7 | Scenario 1: Architecture Exploration | 4-turn interactive exploration of project files, classes, and entrypoints | M3 | ORIGINAL_REQUEST §R3 |
+| F8 | Scenario 2: Bug Diagnosis & Patching | 4-turn diagnosis of failing unit test, patch generation, and test verification | M3 | ORIGINAL_REQUEST §R3 |
+| F9 | Scenario 3: Feature Addition & Tests | 4-turn implementation of Dead Letter Queue (DLQ) with new unit tests | M3 | ORIGINAL_REQUEST §R3 |
+| F10 | Scenario 4: Safe Multi-Turn Refactoring | 4-turn refactoring of task retry strategy and execution pipeline while keeping tests green | M3 | ORIGINAL_REQUEST §R3 |
+| F11 | Scenario 5: Reasoning & Image Generation | 3-turn architectural trade-off reasoning and `/v1/images/generations` test | M3 | ORIGINAL_REQUEST §R3 |
+| F12 | Stress, Concurrency & SSE Resilience | Multi-client concurrent load, SSE connection drop test, upstream 429 exponential backoff validation | M4 | ORIGINAL_REQUEST §R4 |
+| F13 | Full E2E Execution & Report Synthesis | Executes full test harness (19 turns + stress), generates `tests_simulation/SIMULATION_REPORT.md` | M5 | ORIGINAL_REQUEST §R4 |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | Core Foundation, Config, Crypto JWK & Stubs | `Cargo.toml`, `config.yaml`, `config.rs`, `error.rs`, `crypto/jwk.rs`, `v8/stubs.rs` | none | DONE |
-| M2 | V8 Challenge Solver Actor | `v8/actor.rs`, `v8/mod.rs`, `deno_core` worker thread, channel comms | M1 | IN_PROGRESS |
-| M3 | Duck.ai Client Engine, Telemetry & Token Chaining | `duck/models.rs`, `duck/types.rs`, `duck/payload.rs`, `duck/client.rs` | M1, M2 | PLANNED |
-| M4 | SSE Stream, Image Extractor & Axum Web Server | `duck/stream.rs`, `state.rs`, `api/`, `main.rs` | M3 | PLANNED |
-| M5 | Final Milestone: 100% E2E Pass & Tier 5 Hardening | Full integration pass on Tiers 1-4 tests, followed by Tier 5 adversarial hardening | M4, E2E Track (TEST_READY.md) | PLANNED |
-| E2E | E2E Testing Track (Parallel) | Hermetic mock upstream, Tiers 1-4 integration test suites, publishing `TEST_READY.md` | none | IN_PROGRESS |
+| 1 | M1: Simulation Harness & Health Monitor | `tests_simulation/harness/` (Process lifecycle, `/v1/models` check, psutil sampler) | none | DONE |
+| 2 | M2: Codex CLI Assistant & Tool Engine | `tests_simulation/codex_cli/` (OpenAI client, SSE streaming, tool runner, multi-turn state) | M1 | PLANNED |
+| 3 | M3: Mock Project & 5 Scenario Runners | `tests_simulation/mock_project/`, `tests_simulation/scenarios/` (TaskPulse codebase & 5 scenarios) | M2 | PLANNED |
+| 4 | M4: Stress, Concurrency & Diagnostics | `tests_simulation/diagnostics/` (Concurrent load, SSE resilience, rate limit recovery) | M3 | PLANNED |
+| 5 | M5: E2E Runner & SIMULATION_REPORT | `tests_simulation/run_simulation.py`, `tests_simulation/SIMULATION_REPORT.md` generation | M4 | PLANNED |
 
 ## Interface Contracts
+### `harness` ↔ `codex_cli` / `scenarios`
+- `ProxyManager.start() -> bool`: Spawns binary or cargo process on 8080, polls `/v1/models` until ready.
+- `ProxyManager.stop() -> None`: Sends SIGTERM, verifies cleanup.
+- `MetricsCollector.start() / .stop() -> Dict[str, Any]`: Returns RSS, CPU, FD timeseries.
 
-### 1. `crypto::jwk` ↔ `duck::payload`
-- `EphemeralKeypair::generate() -> EphemeralKeypair`
-- `EphemeralKeypair::public_jwk(&self) -> JwkPublicKey`
-- `JwkPublicKey` serializes to JSON matching:
-  ```json
-  {
-    "alg": "RSA-OAEP-256",
-    "e": "AQAB",
-    "ext": true,
-    "key_ops": ["encrypt"],
-    "kty": "RSA",
-    "n": "<base64url_no_pad_modulus>",
-    "use": "enc"
-  }
-  ```
+### `codex_cli` ↔ `scenarios`
+- `CodexClient.chat_stream(messages, model, tools) -> AsyncIterator[StreamChunk]`: Yields tokens, records TTFT, total latency, tool calls.
+- `ToolExecutor.execute(tool_name, arguments) -> ToolResult`: Dispatches filesystem / test execution inside target project.
 
-### 2. `v8::actor` ↔ `duck::client`
-- `V8ActorHandle::solve(&self, challenge_b64: String, user_agent: String) -> Result<String, ChallengeError>`
-- Message request: `(challenge_b64, user_agent, oneshot::Sender<Result<String, ChallengeError>>)`
-- Solved output: base64-encoded JSON string containing updated `client_hashes` and `meta` fields.
+### `mock_project` ↔ `scenarios`
+- Project root: `tests_simulation/mock_project/`
+- Test command: `pytest tests_simulation/mock_project/tests/`
 
-### 3. `duck::client` ↔ `api::chat` & `api::images`
-- `DuckClient::chat_stream(&self, request: &ChatCompletionRequest) -> Result<impl Stream<Item = Result<ChatChunk, DuckError>>, AppError>`
-- `DuckClient::chat_complete(&self, request: &ChatCompletionRequest) -> Result<ChatCompletionResponse, AppError>`
-- `DuckClient::generate_image(&self, prompt: &str) -> Result<ImageGenerationResponse, AppError>`
-
-### 4. `config::Config` ↔ `duck::models`
-- `Config::resolve_model(&self, requested: &str) -> Result<ModelInfo, AppError>`
-- Maps aliases (e.g. `gpt5`, `claude`, `gemma`, `image`) to actual Duck.ai models.
-
-### 5. `error::AppError` ↔ Axum Handlers
-- `AppError` implements `axum::response::IntoResponse` formatting OpenAI errors:
-  ```json
-  {
-    "error": {
-      "message": "...",
-      "type": "invalid_request_error | rate_limit_error | api_error",
-      "param": null,
-      "code": null
-    }
-  }
-  ```
+## Code Layout
+```
+tests_simulation/
+├── harness/
+│   ├── __init__.py
+│   ├── proxy_manager.py       # Duck-proxy process lifecycle & health checker
+│   └── metrics_collector.py   # psutil background sampler (RSS, CPU%, threads, FDs)
+├── codex_cli/
+│   ├── __init__.py
+│   ├── client.py              # OpenAI API SSE client & token tracker
+│   ├── session.py             # Multi-turn conversation state manager
+│   ├── tools.py               # File view/patch/write & pytest runner tools
+│   └── models.py              # Model mapping (gpt5, claude, mistral, image)
+├── mock_project/
+│   ├── taskpulse/
+│   │   ├── __init__.py
+│   │   ├── models.py          # Task, TaskPriority, TaskStatus
+│   │   ├── queue.py           # Priority task queue
+│   │   ├── worker.py          # Worker pool & execution
+│   │   ├── storage.py         # In-memory storage & persistence
+│   │   └── dispatcher.py      # Main API dispatcher
+│   └── tests/
+│       ├── test_queue.py
+│       ├── test_worker.py
+│       └── test_dispatcher.py
+├── scenarios/
+│   ├── __init__.py
+│   ├── runner.py              # Scenario execution engine
+│   ├── scenario_1_explore.py  # Codebase exploration scenario (4 turns)
+│   ├── scenario_2_bugfix.py   # Bug fixing scenario (4 turns)
+│   ├── scenario_3_feature.py  # Feature addition & tests scenario (4 turns)
+│   ├── scenario_4_refactor.py # Multi-turn refactoring scenario (4 turns)
+│   └── scenario_5_reasoning.py# Reasoning & image scenario (3 turns)
+├── diagnostics/
+│   ├── __init__.py
+│   ├── stress_test.py         # Concurrent client requests & latency profiling
+│   └── resilience_test.py     # SSE drop resilience & 429 rate limit backoff
+├── reports/
+│   └── report_generator.py    # Formats markdown SIMULATION_REPORT.md
+├── run_simulation.py          # Master CLI entrypoint
+└── SIMULATION_REPORT.md       # Final generated simulation artifact
+```

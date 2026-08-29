@@ -209,3 +209,57 @@ model_list:
 - [ ] V8 actor worker runs in dedicated thread without blocking Tokio async runtime.
 - [ ] Correctly solves `x-vqd-hash-1` challenge, injects User-Agent SHA256, and supplies valid telemetry signals.
 - [ ] VQD token chaining reuses headers across subsequent chat turns.
+
+## Follow-up — 2026-08-28T20:41:09Z
+
+# Teamwork Project: Extensive Testing & Codex CLI Simulation for Duck Proxy
+
+Conduct extensive live end-to-end testing of `duck-proxy-rs` by building an automated coding assistant CLI (Codex CLI) and executing multi-step coding, refactoring, and code analysis tasks against a mock target project using `http://localhost:8080/v1` as the backend LLM provider.
+
+Working directory: /home/potterparker/Desktop/prjcts/duck-proxy/tests_simulation
+Integrity mode: development
+
+---
+
+## 1. Safety & Isolation Constraints
+- **Sub-directory Isolation**: Create and run all simulation scripts, test projects, and Codex CLI harnesses inside a dedicated directory `/home/potterparker/Desktop/prjcts/duck-proxy/tests_simulation/`.
+- **Zero Regression**: Do NOT delete, overwrite, or corrupt the parent `duck-proxy-rs/` implementation or existing Python files.
+
+---
+
+## 2. Requirements
+
+### R1. Live Proxy Launch & Health Harness
+- Launch `duck-proxy-rs` in background on port `8080` and verify `/v1/models` availability.
+- Monitor proxy logs and memory footprint during testing.
+
+### R2. Codex CLI Coding Assistant Client
+- Implement a CLI coding assistant that connects to `http://localhost:8080/v1` using standard OpenAI client protocols (`gpt5`, `claude`, `mistral`).
+- Support streaming execution, multi-turn reasoning, file inspection, and code generation.
+
+### R3. Mock Target Project & Real-World Scenarios
+- Create a mock multi-file project (e.g. a Python/Rust utility codebase with bugs, missing features, and documentation gaps).
+- Run the Codex CLI across multi-step scenarios:
+  1. Codebase exploration and architectural explanation.
+  2. Bug fixing and patch generation.
+  3. Feature addition and test writing.
+  4. Multi-turn interactive refactoring sessions.
+  5. Image prompt generation / asset request.
+
+### R4. Failure & Bottleneck Diagnostics
+- Log all response times, token throughput, network retries, and errors (e.g. 429 backoff recovery, SSE stream drops, JSON parsing issues).
+- Produce a diagnostic report (`SIMULATION_REPORT.md`) highlighting any bottlenecks, latency spikes, or protocol errors.
+
+---
+
+## Acceptance Criteria
+
+### Execution & Stability
+- [ ] `duck-proxy-rs` successfully handles at least 15 multi-turn CLI interactions without crashing or dropping SSE streams.
+- [ ] Token streaming functions with continuous low-latency chunk delivery to the CLI.
+- [ ] Multi-turn conversation context is correctly maintained across successive prompt turns.
+
+### Resilience & Error Handling
+- [ ] Upstream rate limits or challenge retries recover gracefully without breaking client connections.
+- [ ] Memory consumption of `duck-proxy-rs` remains stable under sustained CLI load.
+- [ ] A final `SIMULATION_REPORT.md` is generated detailing test outcomes, latency stats, and pass/fail metrics.

@@ -24,8 +24,11 @@ async fn main() -> anyhow::Result<()> {
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port).parse()?;
     tracing::info!("Starting Duck.ai proxy on {}", addr);
 
-    // Build the application
-    let app = duck_proxy_rs::create_app(config)
+    // Build the state and warm session cookies
+    let state = duck_proxy_rs::AppState::new(config);
+    state.duck_client.warm().await;
+
+    let app = duck_proxy_rs::create_app_with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
 

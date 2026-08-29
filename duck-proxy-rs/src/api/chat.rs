@@ -9,9 +9,10 @@ use axum::{
     Json,
 };
 use chrono::Utc;
-use futures::stream;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::duck::{build_chat_payload, parse_sse_line, DuckChatMessage, SseEvent};
 use crate::error::AppError;
@@ -66,6 +67,54 @@ impl MessageContent {
             }
         }
     }
+}
+
+/// Normalizes OpenAI ChatML message arrays into Duck.ai compatible (user/assistant only) messages.
+pub fn normalize_messages_for_duck(messages: &[ChatMessage]) -> Vec<DuckChatMessage> {
+    let mut normalized: Vec<DuckChatMessage> = Vec::new();
+    let mut pending_system = String::new();
+
+    for m in messages {
+        let content = m.content.to_text();
+        if m.role == "system" {
+            if !pending_system.is_empty() {
+                pending_system.push_str("\n\n");
+            }
+            pending_system.push_str(&content);
+        } else if m.role == "assistant" {
+            normalized.push(DuckChatMessage {
+                role: "assistant".to_string(),
+                content,
+            });
+        } else {
+            // user or custom tool role -> map to user
+            let user_content = if !pending_system.is_empty() {
+                let combined = format!("[System Instructions: {}]\n\n{}", pending_system, content);
+                pending_system.clear();
+                combined
+            } else {
+                content
+            };
+            normalized.push(DuckChatMessage {
+                role: "user".to_string(),
+                content: user_content,
+            });
+        }
+    }
+
+    // If a system message remains without a following user message
+    if !pending_system.is_empty() {
+        if let Some(first_user) = normalized.iter_mut().find(|m| m.role == "user") {
+            first_user.content = format!("[System Instructions: {}]\n\n{}", pending_system, first_user.content);
+        } else {
+            normalized.insert(0, DuckChatMessage {
+                role: "user".to_string(),
+                content: pending_system,
+            });
+        }
+    }
+
+    normalized
 }
 
 // ---------------------------------------------------------------------------
@@ -164,15 +213,8 @@ pub async fn chat_completions(
         })?
         .to_string();
 
-    // Convert messages
-    let messages: Vec<DuckChatMessage> = req
-        .messages
-        .iter()
-        .map(|m| DuckChatMessage {
-            role: m.role.clone(),
-            content: m.content.to_text(),
-        })
-        .collect();
+    // Convert & normalize messages
+    let messages = normalize_messages_for_duck(&req.messages);
 
     // Build payload
     let payload = build_chat_payload(
@@ -214,7 +256,7 @@ async fn handle_non_streaming(
                 SseEvent::Error(e) => {
                     return Err(AppError::bad_gateway(format!("Upstream error: {}", e)));
                 }
-                SseEvent::ImageData(_) => {} // Ignore images in chat endpoint
+                SseEvent::ImageData(_) => {}
             }
         }
     }
@@ -246,49 +288,90 @@ async fn handle_non_streaming(
     Ok(Json(response).into_response())
 }
 
-/// Streams SSE chunks as they arrive from Duck.ai.
+/// Streams SSE chunks in real time as they arrive over the wire.
 async fn handle_streaming(
     resp: reqwest::Response,
     completion_id: String,
     created: i64,
     model: String,
 ) -> Result<Response, AppError> {
-    let body = resp.text().await.map_err(|e| {
-        AppError::bad_gateway(format!("Failed to read upstream response: {}", e))
-    })?;
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(100);
 
-    let mut events: Vec<Result<Event, Infallible>> = Vec::new();
+    tokio::spawn(async move {
+        let mut byte_stream = resp.bytes_stream();
+        let mut buffer = String::new();
 
-    for line in body.lines() {
-        if let Some(sse_event) = parse_sse_line(line) {
-            match sse_event {
-                SseEvent::Token(token) => {
-                    let chunk = ChatCompletionChunk {
-                        id: completion_id.clone(),
-                        object: "chat.completion.chunk".to_string(),
-                        created,
-                        model: model.clone(),
-                        choices: vec![ChunkChoice {
-                            index: 0,
-                            delta: Delta {
-                                role: None,
-                                content: Some(token),
-                            },
-                            finish_reason: None,
-                        }],
-                    };
-                    let json = serde_json::to_string(&chunk).unwrap_or_default();
-                    events.push(Ok(Event::default().data(json)));
+        while let Some(chunk_res) = byte_stream.next().await {
+            match chunk_res {
+                Ok(bytes) => {
+                    if let Ok(text) = std::str::from_utf8(&bytes) {
+                        buffer.push_str(text);
+
+                        while let Some(pos) = buffer.find('\n') {
+                            let line = buffer[..pos].to_string();
+                            buffer = buffer[pos + 1..].to_string();
+
+                            if let Some(sse_event) = parse_sse_line(&line) {
+                                match sse_event {
+                                    SseEvent::Token(token) => {
+                                        let chunk = ChatCompletionChunk {
+                                            id: completion_id.clone(),
+                                            object: "chat.completion.chunk".to_string(),
+                                            created,
+                                            model: model.clone(),
+                                            choices: vec![ChunkChoice {
+                                                index: 0,
+                                                delta: Delta {
+                                                    role: None,
+                                                    content: Some(token),
+                                                },
+                                                finish_reason: None,
+                                            }],
+                                        };
+                                        if let Ok(json) = serde_json::to_string(&chunk) {
+                                            let _ = tx.send(Ok(Event::default().data(json))).await;
+                                        }
+                                    }
+                                    SseEvent::Done => {
+                                        let _ = tx.send(Ok(Event::default().data("[DONE]"))).await;
+                                        return;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
                 }
-                SseEvent::Done => {
-                    events.push(Ok(Event::default().data("[DONE]")));
+                Err(e) => {
+                    tracing::error!("Stream byte read error: {}", e);
                     break;
                 }
-                SseEvent::Error(_) | SseEvent::ImageData(_) => {}
             }
         }
-    }
 
-    let sse_stream = stream::iter(events);
+        if !buffer.is_empty() {
+            if let Some(SseEvent::Token(token)) = parse_sse_line(&buffer) {
+                let chunk = ChatCompletionChunk {
+                    id: completion_id.clone(),
+                    object: "chat.completion.chunk".to_string(),
+                    created,
+                    model: model.clone(),
+                    choices: vec![ChunkChoice {
+                        index: 0,
+                        delta: Delta {
+                            role: None,
+                            content: Some(token),
+                        },
+                        finish_reason: None,
+                    }],
+                };
+                if let Ok(json) = serde_json::to_string(&chunk) {
+                    let _ = tx.send(Ok(Event::default().data(json))).await;
+                }
+            }
+        }
+    });
+
+    let sse_stream = ReceiverStream::new(rx);
     Ok(Sse::new(sse_stream).into_response())
 }
