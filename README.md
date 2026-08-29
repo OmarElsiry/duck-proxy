@@ -1,53 +1,116 @@
-# 🦆 Duck Proxy — Free Universal AI Gateway (OpenAI Compatible)
+# 🦆 Duck Proxy — Universal AI Gateway (OpenAI Compatible)
 
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-153%20passed-brightgreen.svg)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue.svg)]()
 [![API](https://img.shields.io/badge/API-OpenAI%20v1%20Compatible-success.svg)]()
 
-**Duck Proxy** is a high-performance, asynchronous local server written in pure Rust that converts free Duck.ai chat & image capabilities into a standard **OpenAI API endpoint (`http://localhost:8080/v1`)**.
+**Duck Proxy** is a high-performance, asynchronous local server written in pure Rust that converts Duck.ai into a standard **OpenAI API endpoint (`http://localhost:8080/v1`)**.
 
 Connect it to **Cursor, VS Code (Continue / Cline / Roo Code), ZCode, Aider, Zed, Windsurf, Neovim**, or any Python/Node.js application to access **GPT-5.6 Luna, Claude Haiku 4.5, Mistral Small 2603, Google Gemma 4 31B**, and **Diffusion Image Generation** for free with zero API subscriptions.
 
 ---
 
-## ⚡ Quick Start in 10 Seconds
+## ⚡ 1-Click Quick Start
 
-### 1. Launch with One Click
-In the project folder, simply run:
-
-```bash
-./duck
-```
-
-This will automatically build the release binary (if needed), start the server in the background on port `8080`, and open the web dashboard in your browser at:
-👉 **[http://localhost:8080/app](http://localhost:8080/app)**
+| Operating System | How to Launch | What Happens Automatically |
+| :--- | :--- | :--- |
+| **🪟 Windows (Command Prompt / Double Click)** | Double-click `duck.bat` or run: <br>`duck.bat` | Detects/installs Rust, compiles binary, starts background process, opens web dashboard at `http://localhost:8080/app`. |
+| **🪟 Windows (PowerShell)** | Run in PowerShell: <br>`.\duck.ps1` | Colored status check, background daemon launch, browser auto-start, healthcheck probe. |
+| **🐧 Linux & 🍎 macOS** | Run in Terminal: <br>`./duck` | Compiles release binary, starts background daemon, launches browser, prints live status card. |
 
 ---
 
-## 📦 Installation & Manual Build
+## 📦 How to Install Dependencies (If Needed)
 
-### Option A: Direct Cargo Run (Linux / macOS / Windows)
-Ensure you have the [Rust toolchain installed](https://rustup.rs/):
+If you are running the source code directly, you will need the **Rust toolchain**:
 
+### On Windows
+Run any of the following in Command Prompt or PowerShell:
+```powershell
+# Option 1: Using Windows Package Manager (winget) - Recommended
+winget install Rustlang.Rustup
+
+# Option 2: Using Chocolatey
+choco install rust
+
+# Option 3: Official Installer
+# Download and run https://win.rustup.rs/
+```
+*Note: After installing Rust, close and reopen your terminal.*
+
+### On Linux
 ```bash
-# Clone the repository
-git clone https://github.com/OmarElsiry/duck-proxy.git
-cd duck-proxy/duck-proxy-rs
+# Ubuntu / Debian
+sudo apt update && sudo apt install -y build-essential curl pkg-config libssl-dev
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Run in release mode
-cargo run --release
+# Arch Linux
+sudo pacman -S base-devel rustup
+rustup default stable
+
+# Fedora
+sudo dnf install @development-tools rust cargo
 ```
 
-### Option B: Docker / Docker Compose
-Run in a lightweight, isolated container:
+### On macOS
+```bash
+brew install rust
+```
+
+---
+
+## 🐳 Running with Docker (All Platforms)
+
+Duck Proxy includes a multi-stage Docker container that works identically on Windows, Linux, and macOS:
 
 ```bash
-# Build and run in the background
+# Start container in background
 docker compose up -d
 
-# Check status
+# View live logs
 docker compose logs -f
+
+# Stop container
+docker compose down
+```
+
+The container automatically serves the OpenAI API on `http://localhost:8080/v1` and the web command center on `http://localhost:8080/app`.
+
+---
+
+## 🔄 Running as a Permanent Background Service
+
+### On Windows (Runs automatically on Windows startup):
+Run in PowerShell (as regular user or Admin):
+```powershell
+# Install & start autostart background task
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\install-service.ps1
+
+# To uninstall later
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\uninstall-service.ps1
+```
+
+### On Linux (Systemd Service):
+```bash
+sudo tee /etc/systemd/system/duck-proxy.service << 'EOF'
+[Unit]
+Description=Duck Proxy Local AI Gateway
+After=network.target
+
+[Service]
+ExecStart=/path/to/duck-proxy/duck-proxy-rs/target/release/duck-proxy-rs /path/to/duck-proxy/duck-proxy-rs/config.yaml
+WorkingDirectory=/path/to/duck-proxy/duck-proxy-rs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now duck-proxy
 ```
 
 ---
@@ -85,7 +148,7 @@ In your IDE **Model Settings** &rarr; **Add model provider**:
 
 ### 2. Cursor IDE
 1. Open **Cursor Settings** (`Ctrl+Shift+J` or `Cmd+Shift+J`) &rarr; **Models**.
-2. Under **OpenAI API Key**, type: `duck-proxy`.
+2. Under **OpenAI API Key**, enter `duck-proxy`.
 3. Enable **Override OpenAI Base URL** and enter:
    ```text
    http://localhost:8080/v1
@@ -196,9 +259,9 @@ curl http://localhost:8080/v1/images/generations \
 
 ---
 
-## 🖥️ Terminal Interface Output (`./duck`)
+## 🖥️ Terminal Interface Output (`./duck` / `duck.bat` / `duck.ps1`)
 
-When you run `./duck`, the following information is displayed directly in your terminal:
+When you run `./duck`, `duck.bat`, or `duck.ps1`, the following status card is displayed directly in your terminal:
 
 ```text
  ┌──────────────────────────────────────────────────────────────┐
@@ -211,12 +274,12 @@ When you run `./duck`, the following information is displayed directly in your t
   ● Status:      ONLINE  (Port 8080)
 
  ────────────────────────────────────────────────────────────────
-  MODELS:
-   • gpt-5.6-luna       (gpt5)       → OpenAI GPT-5.6 Luna
-   • claude-haiku-4-5   (claude)     → Anthropic Claude Haiku 4.5
-   • mistral-small-2603 (mistral)    → Mistral Small 2603
-   • tinfoil/gemma4-31b (gemma)      → Google / Tinfoil Gemma 4 31B
-   • gpt-5.4-mini       (gpt5_mini)  → OpenAI GPT-5.4 Mini
+  EXACT MODELS CATALOG:
+   • gpt-5.6-luna       (gpt5)       → OpenAI GPT-5.6 Luna (Flagship Coding)
+   • claude-haiku-4-5   (claude)     → Anthropic Claude Haiku 4.5 (Fast Edits)
+   • mistral-small-2603 (mistral)    → Mistral Small 2603 (Logic & Math)
+   • tinfoil/gemma4-31b (gemma)      → Google / Tinfoil Gemma 4 31B (Privacy)
+   • gpt-5.4-mini       (gpt5_mini)  → OpenAI GPT-5.4 Mini (Lightweight)
    • image-generation   (image)      → Diffusion Image Generator
 
  ────────────────────────────────────────────────────────────────
@@ -225,7 +288,7 @@ When you run `./duck`, the following information is displayed directly in your t
    • Quick Chat: curl http://localhost:8080/v1/chat/completions \
                    -H "Content-Type: application/json" \
                    -d '{"model":"gpt-5.6-luna","messages":[{"role":"user","content":"Hi"}]}'
-   • IDE Setup:  See full Cursor, VS Code, Zed, Aider configs at /app
+   • IDE Setup:  See full Cursor, VS Code, ZCode, Zed at /app
    • Live Logs:  tail -f /tmp/duck-proxy.log
  ────────────────────────────────────────────────────────────────
 ```

@@ -217,7 +217,7 @@ mod tests {
         assert_eq!(cfg.server.host, "0.0.0.0");
         assert_eq!(cfg.server.port, 8080);
         assert_eq!(cfg.upstream_base_url, "https://duck.ai");
-        assert_eq!(cfg.model_list.len(), 7);
+        assert_eq!(cfg.model_list.len(), 13);
 
         assert_eq!(
             cfg.resolve_duck_model("gpt-5.6-luna"),
@@ -269,7 +269,7 @@ server:
         assert_eq!(cfg.server.host, "0.0.0.0");
         assert_eq!(cfg.server.port, 3000);
         assert_eq!(cfg.upstream_base_url, "https://duck.ai");
-        assert_eq!(cfg.model_list.len(), 7);
+        assert_eq!(cfg.model_list.len(), 13);
     }
 
     #[test]
