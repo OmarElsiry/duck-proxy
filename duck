@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# DUCK PROXY — MINIMALIST UBER-STYLE CLI LAUNCHER & IDE COMMAND CENTER
+# DUCK PROXY — MINIMALIST UBER-STYLE CLI LAUNCHER & SHORTCUT
 # ==============================================================================
 
 set -e
@@ -19,7 +19,7 @@ fi
 
 # Check if proxy is already running on port 8080
 if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1 || nc -z 127.0.0.1 $PORT 2>/dev/null; then
-    STATUS_LINE="🟢 Duck Proxy is already active on http://127.0.0.1:$PORT"
+    STATUS_LINE="🟢 Duck Proxy is active on http://127.0.0.1:$PORT"
 else
     echo "🚀 Starting Duck Proxy on http://127.0.0.1:$PORT..."
     setsid "$BIN_PATH" "$CONFIG_PATH" > /tmp/duck-proxy.log 2>&1 &
@@ -32,7 +32,7 @@ else
         fi
         sleep 0.1
     done
-    STATUS_LINE="✅ Duck Proxy started (PID: $PROXY_PID) on http://127.0.0.1:$PORT"
+    STATUS_LINE="✅ Duck Proxy started (PID: $PROXY_PID)"
 fi
 
 # Open Dashboard in default web browser
@@ -44,116 +44,31 @@ fi
 
 cat << "EOF"
 
- ╔═════════════════════════════════════════════════════════════════════════════════════════════════════╗
- ║  DUCK // PROXY — Universal OpenAI-Compatible Local AI Gateway & IDE Command Center                  ║
- ╚═════════════════════════════════════════════════════════════════════════════════════════════════════╝
+ ┌──────────────────────────────────────────────────────────────┐
+ │  DUCK // PROXY — Local AI Gateway (OpenAI Compatible)        │
+ └──────────────────────────────────────────────────────────────┘
 
-  ● Status:             ONLINE (Port 8080)
-  ● Web Dashboard:      http://localhost:8080/app
-  ● OpenAI Endpoint:    http://localhost:8080/v1
-  ● API Key:            duck-proxy (or any dummy string)
+  ● Base URL:    http://localhost:8080/v1
+  ● API Key:     duck-proxy  (or any arbitrary key)
+  ● Dashboard:   http://localhost:8080/app
+  ● Status:      ONLINE  (Port 8080)
 
- ───────────────────────────────────────────────────────────────────────────────────────────────────────
-  1. CORE CONNECTION CREDENTIALS
- ───────────────────────────────────────────────────────────────────────────────────────────────────────
-  Parameter       Value                       Description
-  ──────────────  ──────────────────────────  ──────────────────────────────────────────────────────────
-  Base URL        http://localhost:8080/v1    OpenAI standard chat/completions endpoint
-  API Key         duck-proxy                  Any arbitrary key string (no paid account needed)
-  Protocol        OpenAI REST + SSE           Full real-time streaming & typewriter chunk support
+ ────────────────────────────────────────────────────────────────
+  MODELS:
+   • gpt5        → OpenAI GPT-5.6 Luna (Deep Coding & Reasoning)
+   • claude      → Anthropic Claude Haiku 4.5 (Fast Code Edits)
+   • mistral     → Mistral Small 2603 (Logic & Math)
+   • gemma       → Google / Tinfoil Gemma 4 (Privacy-Preserved)
+   • image       → Diffusion Image Generation
 
- ───────────────────────────────────────────────────────────────────────────────────────────────────────
-  2. AVAILABLE MODEL CATALOG & ROUTING
- ───────────────────────────────────────────────────────────────────────────────────────────────────────
-  Model Alias     Upstream Model              Provider     Best Use Case & Strengths
-  ──────────────  ──────────────────────────  ───────────  ─────────────────────────────────────────────
-  gpt5            gpt-5.6-luna                OpenAI       Architecture design, deep coding & reasoning
-  claude          claude-haiku-4-5            Anthropic    Fast code review, unit tests, refactoring
-  mistral         mistral-small-2603          Mistral AI   Mathematical logic, algorithms, speed
-  gemma           tinfoil/gemma4-31b          Google/Tin   High-parameter privacy-preserved reasoning
-  gpt5_mini       gpt-5.4-mini                OpenAI       Lightweight syntax lookups & commit messages
-  image           image-generation            Duck.ai      Diffusion image generation & vector assets
-
- ───────────────────────────────────────────────────────────────────────────────────────────────────────
-  3. IDE & AI TOOL INTEGRATION GUIDES
- ───────────────────────────────────────────────────────────────────────────────────────────────────────
-
-  [A] Cursor IDE:
-      1. Open Settings (Ctrl+Shift+J / Cmd+Shift+J) -> "Models".
-      2. Set OpenAI API Key: "duck-proxy"
-      3. Enable "Override OpenAI Base URL" -> "http://localhost:8080/v1"
-      4. Add models: "gpt5", "claude", "mistral"
-
-  [B] VS Code (Continue.dev):
-      Add to ~/.continue/config.json:
-      {
-        "models": [
-          {
-            "title": "Duck GPT-5", "provider": "openai", "model": "gpt5",
-            "apiBase": "http://localhost:8080/v1", "apiKey": "duck-proxy"
-          },
-          {
-            "title": "Duck Claude", "provider": "openai", "model": "claude",
-            "apiBase": "http://localhost:8080/v1", "apiKey": "duck-proxy"
-          }
-        ]
-      }
-
-  [C] VS Code (Cline / Roo Code):
-      1. Open Cline Settings -> API Provider: "OpenAI Compatible"
-      2. Base URL: "http://localhost:8080/v1"
-      3. API Key:  "duck-proxy"
-      4. Model ID: "gpt5" or "claude"
-      5. Enable "Supports Streaming"
-
-  [D] Aider CLI (Terminal Pair Programming):
-      export OPENAI_API_BASE="http://localhost:8080/v1"
-      export OPENAI_API_KEY="duck-proxy"
-      aider --model openai/gpt5
-
-  [E] Zed Editor:
-      Add to ~/.config/zed/settings.json:
-      "language_models": {
-        "openai": {
-          "api_url": "http://localhost:8080/v1",
-          "available_models": [
-            { "name": "gpt5", "display_name": "Duck GPT-5 Luna", "max_tokens": 8192 },
-            { "name": "claude", "display_name": "Duck Claude Haiku", "max_tokens": 8192 }
-          ]
-        }
-      }
-
-  [F] Windsurf:
-      Settings -> AI Provider -> Custom OpenAI -> Base URL: "http://localhost:8080/v1", Model: "gpt5"
-
-  [G] Neovim (Avante.nvim / CodeCompanion):
-      endpoint = "http://localhost:8080/v1", model = "gpt5", api_key_name = "DUCK_PROXY_KEY"
-
- ───────────────────────────────────────────────────────────────────────────────────────────────────────
-  4. QUICK COMMANDS & VERIFICATION
- ───────────────────────────────────────────────────────────────────────────────────────────────────────
-
-  [1] List Models:
-      curl http://localhost:8080/v1/models
-
-  [2] Chat Completion (GPT-5 / Claude / Mistral):
-      curl http://localhost:8080/v1/chat/completions \
-        -H "Content-Type: application/json" \
-        -d '{"model": "gpt5", "messages": [{"role": "user", "content": "Hello!"}]}'
-
-  [3] Real-time Streaming (Typewriter SSE):
-      curl -N http://localhost:8080/v1/chat/completions \
-        -H "Content-Type: application/json" \
-        -d '{"model": "claude", "stream": true, "messages": [{"role": "user", "content": "Write 2 lines."}]}'
-
-  [4] Image Generation (Base64 extraction):
-      curl http://localhost:8080/v1/images/generations \
-        -H "Content-Type: application/json" \
-        -d '{"prompt": "minimalist cyber duck logo", "response_format": "b64_json"}'
-
- ───────────────────────────────────────────────────────────────────────────────────────────────────────
-  ● Web Dashboard: http://localhost:8080/app
-  ● Live logs:      tail -f /tmp/duck-proxy.log
- ───────────────────────────────────────────────────────────────────────────────────────────────────────
+ ────────────────────────────────────────────────────────────────
+  QUICK USAGE:
+   • Test API:   curl http://localhost:8080/v1/models
+   • Quick Chat: curl http://localhost:8080/v1/chat/completions \
+                   -H "Content-Type: application/json" \
+                   -d '{"model":"gpt5","messages":[{"role":"user","content":"Hi"}]}'
+   • IDE Setup:  See full Cursor, VS Code, Zed, Aider configs at /app
+   • Live Logs:  tail -f /tmp/duck-proxy.log
+ ────────────────────────────────────────────────────────────────
 
 EOF
