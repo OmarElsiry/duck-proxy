@@ -76,6 +76,12 @@ fn default_upstream_base_url() -> String {
 pub fn default_model_list() -> Vec<ModelMapping> {
     vec![
         ModelMapping::new("gpt-5.6-luna", "gpt-5.6-luna"),
+        ModelMapping::new("gpt-5.4-mini", "gpt-5.4-mini"),
+        ModelMapping::new("claude-haiku-4-5", "claude-haiku-4-5"),
+        ModelMapping::new("mistral-small-2603", "mistral-small-2603"),
+        ModelMapping::new("tinfoil/gemma4-31b", "tinfoil/gemma4-31b"),
+        ModelMapping::new("gemma4-31b", "tinfoil/gemma4-31b"),
+        ModelMapping::new("image-generation", "image-generation"),
         ModelMapping::new("gpt5", "gpt-5.6-luna"),
         ModelMapping::new("gpt5_mini", "gpt-5.4-mini"),
         ModelMapping::new("gemma", "tinfoil/gemma4-31b"),

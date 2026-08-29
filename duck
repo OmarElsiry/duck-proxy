@@ -54,20 +54,21 @@ cat << "EOF"
   ● Status:      ONLINE  (Port 8080)
 
  ────────────────────────────────────────────────────────────────
-  MODELS:
-   • gpt5        → OpenAI GPT-5.6 Luna (Deep Coding & Reasoning)
-   • claude      → Anthropic Claude Haiku 4.5 (Fast Code Edits)
-   • mistral     → Mistral Small 2603 (Logic & Math)
-   • gemma       → Google / Tinfoil Gemma 4 (Privacy-Preserved)
-   • image       → Diffusion Image Generation
+  EXACT MODELS CATALOG:
+   • gpt-5.6-luna       (gpt5)       → OpenAI GPT-5.6 Luna (Flagship Coding)
+   • claude-haiku-4-5   (claude)     → Anthropic Claude Haiku 4.5 (Fast Edits)
+   • mistral-small-2603 (mistral)    → Mistral Small 2603 (Logic & Math)
+   • tinfoil/gemma4-31b (gemma)      → Google / Tinfoil Gemma 4 31B (Privacy)
+   • gpt-5.4-mini       (gpt5_mini)  → OpenAI GPT-5.4 Mini (Lightweight)
+   • image-generation   (image)      → Diffusion Image Generator
 
  ────────────────────────────────────────────────────────────────
   QUICK USAGE:
    • Test API:   curl http://localhost:8080/v1/models
    • Quick Chat: curl http://localhost:8080/v1/chat/completions \
                    -H "Content-Type: application/json" \
-                   -d '{"model":"gpt5","messages":[{"role":"user","content":"Hi"}]}'
-   • IDE Setup:  See full Cursor, VS Code, Zed, Aider configs at /app
+                   -d '{"model":"gpt-5.6-luna","messages":[{"role":"user","content":"Hi"}]}'
+   • IDE Setup:  See full Cursor, VS Code, ZCode, Zed at /app
    • Live Logs:  tail -f /tmp/duck-proxy.log
  ────────────────────────────────────────────────────────────────
 

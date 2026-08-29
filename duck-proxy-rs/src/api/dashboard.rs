@@ -708,12 +708,13 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
         <div class="cmd-body">
           <div>
             <div class="form-group">
-              <label class="form-label">Model Alias</label>
+              <label class="form-label">Model Identifier</label>
               <select class="form-select" id="chat-model">
-                <option value="gpt5">gpt5 (GPT-5.6 Luna)</option>
-                <option value="claude">claude (Claude Haiku 4.5)</option>
-                <option value="mistral">mistral (Mistral Small 2603)</option>
-                <option value="gemma">gemma (Gemma 2 9B)</option>
+                <option value="gpt-5.6-luna">gpt-5.6-luna (OpenAI GPT-5.6 Luna - Flagship)</option>
+                <option value="claude-haiku-4-5">claude-haiku-4-5 (Anthropic Claude Haiku 4.5 - Fast)</option>
+                <option value="mistral-small-2603">mistral-small-2603 (Mistral Small 2603 - Logic)</option>
+                <option value="tinfoil/gemma4-31b">tinfoil/gemma4-31b (Google / Tinfoil Gemma 4 31B)</option>
+                <option value="gpt-5.4-mini">gpt-5.4-mini (OpenAI GPT-5.4 Mini - Lightweight)</option>
               </select>
             </div>
             <div class="form-group">
@@ -748,11 +749,13 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
         <div class="cmd-body">
           <div>
             <div class="form-group">
-              <label class="form-label">Model</label>
+              <label class="form-label">Streaming Model</label>
               <select class="form-select" id="stream-model">
-                <option value="gpt5">gpt5</option>
-                <option value="claude">claude</option>
-                <option value="mistral">mistral</option>
+                <option value="gpt-5.6-luna">gpt-5.6-luna (OpenAI GPT-5.6 Luna)</option>
+                <option value="claude-haiku-4-5">claude-haiku-4-5 (Anthropic Claude Haiku 4.5)</option>
+                <option value="mistral-small-2603">mistral-small-2603 (Mistral Small 2603)</option>
+                <option value="tinfoil/gemma4-31b">tinfoil/gemma4-31b (Google Gemma 4 31B)</option>
+                <option value="gpt-5.4-mini">gpt-5.4-mini (OpenAI GPT-5.4 Mini)</option>
               </select>
             </div>
             <div class="form-group">
