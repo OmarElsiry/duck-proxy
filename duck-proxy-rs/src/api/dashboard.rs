@@ -465,6 +465,90 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
       margin-top: 32px;
     }
 
+    .ide-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      font-size: 13px;
+    }
+
+    .ide-table th, .ide-table td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .ide-table th {
+      background: var(--surface-raised);
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .ide-table tr:hover td {
+      background: var(--surface-hover);
+    }
+
+    .pill-model {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: var(--text);
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+    }
+
+    .pill-provider {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      background: var(--badge-bg);
+      color: var(--text-muted);
+    }
+
+    .ide-nav {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+      margin-bottom: 16px;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+
+    .ide-tab-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .ide-tab-btn:hover {
+      color: var(--text);
+      border-color: var(--border-focus);
+    }
+
+    .ide-tab-btn.active {
+      background: var(--text);
+      color: var(--bg);
+      border-color: var(--text);
+    }
+
+    .ide-desc-box {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+
     .code-block {
       background: var(--code-bg);
       border: 1px solid var(--border);
@@ -724,18 +808,217 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
 
     </div>
 
-    <!-- Quick Reference / Client Integration Sheet -->
+    <!-- Model Catalog & IDE Integration Hub -->
     <div class="ref-box">
-      <div class="section-title" style="margin-bottom:8px;">Client Integration & Quick Commands</div>
-      <p style="color:var(--text-muted);font-size:13px;">Use these commands directly in your terminal, Python scripts, Cursor, or Aider:</p>
+      <div class="section-title" style="margin-bottom:4px;">Available Model Catalog</div>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">All models are routed dynamically with isolated upstream sessions and automated V8 anti-bot solving:</p>
+      
+      <table class="ide-table">
+        <thead>
+          <tr>
+            <th>Model Alias</th>
+            <th>Upstream Engine</th>
+            <th>Provider</th>
+            <th>Primary Strengths & Best Use Cases</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="pill-model">gpt5</span></td>
+            <td>gpt-5.6-luna</td>
+            <td><span class="pill-provider">OpenAI</span></td>
+            <td><strong>Flagship Coding:</strong> Complex multi-file architecture, deep logic, autonomous reasoning.</td>
+          </tr>
+          <tr>
+            <td><span class="pill-model">claude</span></td>
+            <td>claude-haiku-4-5</td>
+            <td><span class="pill-provider">Anthropic</span></td>
+            <td><strong>Fast Iteration:</strong> Code review, unit test generation, docstrings, interactive refactoring.</td>
+          </tr>
+          <tr>
+            <td><span class="pill-model">mistral</span></td>
+            <td>mistral-small-2603</td>
+            <td><span class="pill-provider">Mistral AI</span></td>
+            <td><strong>Speed & Algorithms:</strong> Mathematical logic, concise scripts, algorithms.</td>
+          </tr>
+          <tr>
+            <td><span class="pill-model">gemma</span></td>
+            <td>tinfoil/gemma4-31b</td>
+            <td><span class="pill-provider">Google / Tin</span></td>
+            <td><strong>Privacy Preserved:</strong> High-parameter open model with zero-tracking guarantees.</td>
+          </tr>
+          <tr>
+            <td><span class="pill-model">gpt5_mini</span></td>
+            <td>gpt-5.4-mini</td>
+            <td><span class="pill-provider">OpenAI</span></td>
+            <td><strong>Lightweight:</strong> Quick syntax lookups, commit message drafting, simple queries.</td>
+          </tr>
+          <tr>
+            <td><span class="pill-model">image</span></td>
+            <td>image-generation</td>
+            <td><span class="pill-provider">Duck.ai</span></td>
+            <td><strong>Visual Assets:</strong> Generates images, app icons, vector art via standard OpenAI format.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-      <div class="code-block">
-        <button class="copy-btn-float" onclick="copySnippet('python-snip')">Copy Python</button>
-        <pre id="python-snip">from openai import OpenAI
+    <!-- IDE & Tool Integration Center -->
+    <div class="ref-box" style="margin-top:24px;">
+      <div class="section-title" style="margin-bottom:4px;">Universal IDE & Editor Integration Hub</div>
+      <p style="color:var(--text-muted);font-size:13px;">Connect Duck Proxy to your favorite editor or tool in under 30 seconds:</p>
+
+      <div class="ide-nav">
+        <button class="ide-tab-btn active" id="tab-btn-cursor" onclick="selectIde('cursor')">Cursor IDE</button>
+        <button class="ide-tab-btn" id="tab-btn-continue" onclick="selectIde('continue')">VS Code (Continue)</button>
+        <button class="ide-tab-btn" id="tab-btn-cline" onclick="selectIde('cline')">VS Code (Cline / Roo)</button>
+        <button class="ide-tab-btn" id="tab-btn-aider" onclick="selectIde('aider')">Aider CLI</button>
+        <button class="ide-tab-btn" id="tab-btn-zed" onclick="selectIde('zed')">Zed Editor</button>
+        <button class="ide-tab-btn" id="tab-btn-windsurf" onclick="selectIde('windsurf')">Windsurf</button>
+        <button class="ide-tab-btn" id="tab-btn-neovim" onclick="selectIde('neovim')">Neovim (Avante)</button>
+        <button class="ide-tab-btn" id="tab-btn-python" onclick="selectIde('python')">Python SDK</button>
+        <button class="ide-tab-btn" id="tab-btn-curl" onclick="selectIde('curl')">cURL</button>
+      </div>
+
+      <!-- Cursor Panel -->
+      <div class="ide-content-panel" id="ide-panel-cursor">
+        <div class="ide-desc-box">
+          1. Open <strong>Cursor Settings</strong> (<code>Ctrl+Shift+J</code> / <code>Cmd+Shift+J</code>) &rarr; <strong>Models</strong>.<br>
+          2. Under <strong>OpenAI API Key</strong>, type <code>duck-proxy</code>.<br>
+          3. Click <strong>Override OpenAI Base URL</strong> and enter <code>http://localhost:8080/v1</code>.<br>
+          4. Add models: <code>gpt5</code>, <code>claude</code>, <code>mistral</code>.
+        </div>
+        <div class="code-block">
+          <button class="copy-btn-float" onclick="copySnippet('cursor-snip')">Copy Endpoint</button>
+          <pre id="cursor-snip">Base URL: http://localhost:8080/v1
+API Key:  duck-proxy
+Models:   gpt5, claude, mistral</pre>
+        </div>
+      </div>
+
+      <!-- Continue Panel -->
+      <div class="ide-content-panel" id="ide-panel-continue" style="display:none;">
+        <div class="ide-desc-box">
+          Add these models to your <code>~/.continue/config.json</code>:
+        </div>
+        <div class="code-block">
+          <button class="copy-btn-float" onclick="copySnippet('continue-snip')">Copy JSON</button>
+          <pre id="continue-snip">{
+  "models": [
+    {
+      "title": "Duck GPT-5 Luna",
+      "provider": "openai",
+      "model": "gpt5",
+      "apiBase": "http://localhost:8080/v1",
+      "apiKey": "duck-proxy"
+    },
+    {
+      "title": "Duck Claude Haiku",
+      "provider": "openai",
+      "model": "claude",
+      "apiBase": "http://localhost:8080/v1",
+      "apiKey": "duck-proxy"
+    }
+  ]
+}</pre>
+        </div>
+      </div>
+
+      <!-- Cline / Roo Panel -->
+      <div class="ide-content-panel" id="ide-panel-cline" style="display:none;">
+        <div class="ide-desc-box">
+          1. In the extension settings, choose <strong>OpenAI Compatible</strong> provider.<br>
+          2. Base URL: <code>http://localhost:8080/v1</code><br>
+          3. API Key: <code>duck-proxy</code><br>
+          4. Model ID: <code>gpt5</code> or <code>claude</code>
+        </div>
+        <div class="code-block">
+          <button class="copy-btn-float" onclick="copySnippet('cline-snip')">Copy Settings</button>
+          <pre id="cline-snip">Provider: OpenAI Compatible
+Base URL: http://localhost:8080/v1
+API Key:  duck-proxy
+Model ID: gpt5</pre>
+        </div>
+      </div>
+
+      <!-- Aider Panel -->
+      <div class="ide-content-panel" id="ide-panel-aider" style="display:none;">
+        <div class="ide-desc-box">
+          Run terminal pair programming with Aider:
+        </div>
+        <div class="code-block">
+          <button class="copy-btn-float" onclick="copySnippet('aider-snip')">Copy Command</button>
+          <pre id="aider-snip">export OPENAI_API_BASE="http://localhost:8080/v1"
+export OPENAI_API_KEY="duck-proxy"
+aider --model openai/gpt5</pre>
+        </div>
+      </div>
+
+      <!-- Zed Panel -->
+      <div class="ide-content-panel" id="ide-panel-zed" style="display:none;">
+        <div class="ide-desc-box">
+          Add to your <code>~/.config/zed/settings.json</code>:
+        </div>
+        <div class="code-block">
+          <button class="copy-btn-float" onclick="copySnippet('zed-snip')">Copy Settings</button>
+          <pre id="zed-snip">{
+  "language_models": {
+    "openai": {
+      "api_url": "http://localhost:8080/v1",
+      "available_models": [
+        { "name": "gpt5", "display_name": "Duck GPT-5 Luna", "max_tokens": 8192 },
+        { "name": "claude", "display_name": "Duck Claude Haiku", "max_tokens": 8192 }
+      ]
+    }
+  }
+}</pre>
+        </div>
+      </div>
+
+      <!-- Windsurf Panel -->
+      <div class="ide-content-panel" id="ide-panel-windsurf" style="display:none;">
+        <div class="ide-desc-box">
+          Settings &rarr; AI Provider &rarr; Custom OpenAI:
+        </div>
+        <div class="code-block">
+          <button class="copy-btn-float" onclick="copySnippet('windsurf-snip')">Copy Settings</button>
+          <pre id="windsurf-snip">Endpoint: http://localhost:8080/v1
+API Key:  duck-proxy
+Model:    gpt5</pre>
+        </div>
+      </div>
+
+      <!-- Neovim Panel -->
+      <div class="ide-content-panel" id="ide-panel-neovim" style="display:none;">
+        <div class="ide-desc-box">
+          Avante.nvim setup:
+        </div>
+        <div class="code-block">
+          <button class="copy-btn-float" onclick="copySnippet('neovim-snip')">Copy Lua</button>
+          <pre id="neovim-snip">require('avante').setup({
+  provider = "openai",
+  openai = {
+    endpoint = "http://localhost:8080/v1",
+    model = "gpt5",
+    api_key_name = "DUCK_PROXY_KEY",
+    timeout = 30000,
+  }
+})</pre>
+        </div>
+      </div>
+
+      <!-- Python Panel -->
+      <div class="ide-content-panel" id="ide-panel-python" style="display:none;">
+        <div class="ide-desc-box">
+          Standard OpenAI Python SDK integration:
+        </div>
+        <div class="code-block">
+          <button class="copy-btn-float" onclick="copySnippet('python-snip')">Copy Python</button>
+          <pre id="python-snip">from openai import OpenAI
 
 client = OpenAI(
     base_url="http://localhost:8080/v1",
-    api_key="duck-proxy-free"
+    api_key="duck-proxy"
 )
 
 response = client.chat.completions.create(
@@ -746,14 +1029,22 @@ response = client.chat.completions.create(
 
 for chunk in response:
     print(chunk.choices[0].delta.content or "", end="", flush=True)</pre>
+        </div>
       </div>
 
-      <div class="code-block" style="margin-top:16px;">
-        <button class="copy-btn-float" onclick="copySnippet('curl-snip')">Copy cURL</button>
-        <pre id="curl-snip">curl -N http://localhost:8080/v1/chat/completions \
+      <!-- cURL Panel -->
+      <div class="ide-content-panel" id="ide-panel-curl" style="display:none;">
+        <div class="ide-desc-box">
+          Direct terminal SSE streaming:
+        </div>
+        <div class="code-block">
+          <button class="copy-btn-float" onclick="copySnippet('curl-snip')">Copy cURL</button>
+          <pre id="curl-snip">curl -N http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "gpt5", "stream": true, "messages": [{"role": "user", "content": "Hello!"}]}'</pre>
+        </div>
       </div>
+
     </div>
 
   </main>
@@ -766,6 +1057,15 @@ for chunk in response:
     themeBtn.addEventListener('click', () => {
       document.documentElement.classList.toggle('light');
     });
+
+    function selectIde(ideName) {
+      document.querySelectorAll('.ide-tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.ide-content-panel').forEach(p => p.style.display = 'none');
+      const activeBtn = document.getElementById('tab-btn-' + ideName);
+      const activePanel = document.getElementById('ide-panel-' + ideName);
+      if (activeBtn) activeBtn.classList.add('active');
+      if (activePanel) activePanel.style.display = 'block';
+    }
 
     function showToast(msg) {
       const t = document.getElementById('toast');
