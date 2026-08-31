@@ -28,7 +28,6 @@ async fn main() -> anyhow::Result<()> {
     let state = duck_proxy_rs::AppState::new(config);
     let startup_journey = uuid::Uuid::new_v4().simple().to_string();
     state.duck_client.warm(&startup_journey).await;
-    state.duck_client.start_background_pool_worker();
 
     let app = duck_proxy_rs::create_app_with_state(state)
         .layer(CorsLayer::permissive())

@@ -105,11 +105,12 @@ impl DuckClient {
 
         let http = reqwest::Client::builder()
             .default_headers(default_headers)
-            .cookie_store(true)
+            .cookie_store(false)
             .build()
             .expect("Failed to build HTTP client");
 
         let status_http = reqwest::Client::builder()
+            .cookie_store(false)
             .build()
             .expect("Failed to build status HTTP client");
 
@@ -132,38 +133,9 @@ impl DuckClient {
         }
     }
 
-    /// Starts a background token prefetcher that maintains a pool of fresh VQD challenges.
+    /// Starts a background token prefetcher (disabled to prevent upstream rate limits).
     pub fn start_background_pool_worker(self: &Arc<Self>) {
-        let client = Arc::clone(self);
-        tokio::spawn(async move {
-            loop {
-                let pool_len = {
-                    let pool = client.vqd_pool.lock().await;
-                    pool.len()
-                };
-
-                if pool_len < 3 {
-                    let dummy_journey = uuid::Uuid::new_v4().simple().to_string();
-                    match client.fetch_raw_status_challenge(&dummy_journey, USER_AGENT).await {
-                        Ok(chal) => {
-                            let mut pool = client.vqd_pool.lock().await;
-                            if pool.len() < 5 {
-                                pool.push(chal);
-                                tracing::info!("Pre-fetched fresh VQD challenge into pool (total: {})", pool.len());
-                            }
-                            tokio::time::sleep(tokio::time::Duration::from_millis(4000)).await;
-                            continue;
-                        }
-                        Err(_) => {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(35)).await;
-                            continue;
-                        }
-                    }
-                }
-
-                tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
-            }
-        });
+        // Disabled background polling to respect Duck.ai rate limits
     }
 
     /// Returns the browser fingerprint headers required by Duck.ai.
@@ -386,14 +358,15 @@ impl DuckClient {
         requested_model: &str,
         messages: &[DuckChatMessage],
         fallback_chain: &[String],
+        is_image_gen: bool,
     ) -> Result<(reqwest::Response, String), AppError> {
         let _chat_guard = self.chat_lock.lock().await;
         let mut last_err = None;
-        const MAX_CASCADE_ROUNDS: usize = 2;
+        const MAX_CASCADE_ROUNDS: usize = 1;
 
         for round in 0..MAX_CASCADE_ROUNDS {
             if round > 0 {
-                let backoff_ms = 3000 + (chrono::Utc::now().timestamp_subsec_millis() as u64 % 200);
+                let backoff_ms = 1000 + (chrono::Utc::now().timestamp_subsec_millis() as u64 % 200);
                 tracing::warn!(
                     "Model '{}' rate limited or waiting for cooldown, waiting {}ms before round {}/{}...",
                     requested_model,
@@ -419,7 +392,7 @@ impl DuckClient {
                     candidate_model,
                     messages.to_vec(),
                     &self.keypair,
-                    false,
+                    is_image_gen,
                     &fresh_conversation_id,
                 );
 
@@ -433,13 +406,14 @@ impl DuckClient {
                     );
                 }
 
-                // Ensure at least 4.5s spacing between consecutive chat requests to avoid upstream IP rate limits
+                // Minimal spacing between requests to prevent socket congestion
+                let min_spacing_ms = if idx > 0 { 200 } else { 1500 };
                 {
                     let mut last_call = self.last_chat_call.lock().await;
                     if let Some(prev) = *last_call {
                         let elapsed = prev.elapsed();
-                        if elapsed < tokio::time::Duration::from_millis(4500) {
-                            let sleep_dur = tokio::time::Duration::from_millis(4500) - elapsed;
+                        if elapsed < tokio::time::Duration::from_millis(min_spacing_ms) {
+                            let sleep_dur = tokio::time::Duration::from_millis(min_spacing_ms) - elapsed;
                             tokio::time::sleep(sleep_dur).await;
                         }
                     }

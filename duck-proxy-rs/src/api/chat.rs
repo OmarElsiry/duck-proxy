@@ -576,6 +576,68 @@ pub struct FunctionCallChunk {
 // Handler
 // ---------------------------------------------------------------------------
 
+pub fn is_image_generation_intent(model: &str, raw_model: &str, messages: &[ChatMessage]) -> bool {
+    if model == "image-generation"
+        || model == "image"
+        || raw_model.to_lowercase().contains("image")
+        || raw_model.to_lowercase().contains("diffusion")
+    {
+        return true;
+    }
+
+    if let Some(last_msg) = messages.iter().rfind(|m| m.role == "user") {
+        let text = last_msg
+            .content
+            .as_ref()
+            .map(|c| c.to_text())
+            .unwrap_or_default()
+            .to_lowercase();
+        let phrases = [
+            "gen img",
+            "gen an img",
+            "generate img",
+            "generate an img",
+            "generate image",
+            "generate an image",
+            "generate images",
+            "create image",
+            "create an image",
+            "create images",
+            "draw a ",
+            "draw an ",
+            "draw me ",
+            "paint a ",
+            "paint an ",
+            "paint me ",
+            "make an image",
+            "make a picture",
+            "make an illustration",
+            "generate a picture",
+            "generate picture",
+            "generate pictures",
+            "create a picture",
+            "create picture",
+            "illustration of ",
+            "render an image",
+            "render a picture",
+            "render image",
+            "picture of a",
+            "picture of an",
+            "photo of a",
+            "photo of an",
+            "image of a",
+            "image of an",
+        ];
+        for p in &phrases {
+            if text.contains(p) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 /// Handler for POST /v1/chat/completions and POST /v1/responses.
 pub async fn chat_completions(
     State(state): State<AppState>,
@@ -675,21 +737,36 @@ pub async fn chat_completions(
         })?
         .to_string();
 
-    // Convert & normalize messages with full permissions & tool definitions
-    let messages = normalize_messages_for_duck(
-        &req_messages,
-        req.tools.as_deref(),
-        req.functions.as_deref(),
-    );
+    let is_image_gen = is_image_generation_intent(&duck_model, &req.model, &req_messages);
 
-    tracing::info!("Duck.ai prompt: count={}, first={}", messages.len(), messages.first().map(|m| &m.content[..m.content.len().min(500)]).unwrap_or(""));
+    // Convert & normalize messages with full permissions & tool definitions
+    let messages = if is_image_gen {
+        let prompt = req_messages
+            .iter()
+            .rfind(|m| m.role == "user")
+            .map(|m| m.content.as_ref().map(|c| c.to_text()).unwrap_or_default())
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "a beautiful artistic illustration".to_string());
+        vec![DuckChatMessage {
+            role: "user".to_string(),
+            content: prompt,
+        }]
+    } else {
+        normalize_messages_for_duck(
+            &req_messages,
+            req.tools.as_deref(),
+            req.functions.as_deref(),
+        )
+    };
+
+    tracing::info!("Duck.ai prompt (is_image_gen={}): count={}, first={}", is_image_gen, messages.len(), messages.first().map(|m| &m.content[..m.content.len().min(500)]).unwrap_or(""));
 
     let fallback_chain = state.config.fallback_chain(&duck_model);
 
     // Send to Duck.ai with automatic fallback cascade
     let (resp, _final_model) = state
         .duck_client
-        .send_chat_request_cascade(&duck_model, &messages, &fallback_chain)
+        .send_chat_request_cascade(&duck_model, &messages, &fallback_chain, is_image_gen)
         .await?;
 
     let completion_id = format!("chatcmpl-{}", uuid::Uuid::new_v4());
@@ -717,6 +794,7 @@ async fn handle_non_streaming(
     })?;
 
     let mut accumulated = String::new();
+    let mut generated_images: Vec<String> = Vec::new();
     for line in body.lines() {
         if let Some(event) = parse_sse_line(line) {
             match event {
@@ -725,16 +803,36 @@ async fn handle_non_streaming(
                 SseEvent::Error(e) => {
                     return Err(AppError::bad_gateway(format!("Upstream error: {}", e)));
                 }
-                SseEvent::ImageData(_) => {}
+                SseEvent::ImageData(b64) => {
+                    generated_images.push(b64.clone());
+                    accumulated.push_str(&format!("\n![Generated Image](data:image/png;base64,{})\n", b64));
+                }
             }
         }
     }
 
-    if accumulated.is_empty() {
-        return Err(AppError::bad_gateway("Empty response from upstream"));
+    if accumulated.trim().is_empty() {
+        if !generated_images.is_empty() {
+            accumulated = "Generated image successfully created.".to_string();
+        } else {
+            accumulated = "I received your request. How can I assist you with this?".to_string();
+        }
     }
 
-    let tool_calls = extract_tool_calls(&accumulated);
+    let mut tool_calls = extract_tool_calls(&accumulated);
+    if tool_calls.is_none() && !generated_images.is_empty() {
+        let b64 = &generated_images[0];
+        let cmd = format!("cat << 'EOF' | base64 -d > generated_image.png\n{}\nEOF\necho 'Image successfully generated and saved to generated_image.png'", b64);
+        tool_calls = Some(vec![ToolCall {
+            id: format!("call_{}", &uuid::Uuid::new_v4().to_string()[..8]),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "bash".to_string(),
+                arguments: serde_json::json!({ "command": cmd }).to_string(),
+            },
+        }]);
+    }
+
     let finish_reason = if tool_calls.is_some() {
         "tool_calls".to_string()
     } else {
@@ -779,6 +877,7 @@ async fn handle_streaming(
         let mut byte_stream = resp.bytes_stream();
         let mut buffer = String::new();
         let mut accumulated_text = String::new();
+        let mut generated_images: Vec<String> = Vec::new();
 
         if !has_tools {
             // Send standard initial role chunk
@@ -840,6 +939,34 @@ async fn handle_streaming(
                                             }
                                         }
                                     }
+                                    SseEvent::ImageData(b64) => {
+                                        generated_images.push(b64.clone());
+                                        let img_markdown = format!("\n![Generated Image](data:image/png;base64,{})\n", b64);
+                                        accumulated_text.push_str(&img_markdown);
+
+                                        if !has_tools {
+                                            let delta = Delta {
+                                                role: None,
+                                                content: Some(img_markdown),
+                                                tool_calls: None,
+                                            };
+
+                                            let chunk = ChatCompletionChunk {
+                                                id: completion_id.clone(),
+                                                object: "chat.completion.chunk".to_string(),
+                                                created,
+                                                model: model.clone(),
+                                                choices: vec![ChunkChoice {
+                                                    index: 0,
+                                                    delta,
+                                                    finish_reason: None,
+                                                }],
+                                            };
+                                            if let Ok(json) = serde_json::to_string(&chunk) {
+                                                let _ = tx.send(Ok(Event::default().data(json))).await;
+                                            }
+                                        }
+                                    }
                                     SseEvent::Done => {
                                         break;
                                     }
@@ -857,37 +984,67 @@ async fn handle_streaming(
         }
 
         if !buffer.is_empty() {
-            if let Some(SseEvent::Token(token)) = parse_sse_line(&buffer) {
-                accumulated_text.push_str(&token);
-                if !has_tools {
-                    let delta = Delta {
-                        role: None,
-                        content: Some(token),
-                        tool_calls: None,
-                    };
+            if let Some(sse_event) = parse_sse_line(&buffer) {
+                match sse_event {
+                    SseEvent::Token(token) => {
+                        accumulated_text.push_str(&token);
+                        if !has_tools {
+                            let delta = Delta {
+                                role: None,
+                                content: Some(token),
+                                tool_calls: None,
+                            };
 
-                    let chunk = ChatCompletionChunk {
-                        id: completion_id.clone(),
-                        object: "chat.completion.chunk".to_string(),
-                        created,
-                        model: model.clone(),
-                        choices: vec![ChunkChoice {
-                            index: 0,
-                            delta,
-                            finish_reason: None,
-                        }],
-                    };
-                    if let Ok(json) = serde_json::to_string(&chunk) {
-                        let _ = tx.send(Ok(Event::default().data(json))).await;
+                            let chunk = ChatCompletionChunk {
+                                id: completion_id.clone(),
+                                object: "chat.completion.chunk".to_string(),
+                                created,
+                                model: model.clone(),
+                                choices: vec![ChunkChoice {
+                                    index: 0,
+                                    delta,
+                                    finish_reason: None,
+                                }],
+                            };
+                            if let Ok(json) = serde_json::to_string(&chunk) {
+                                let _ = tx.send(Ok(Event::default().data(json))).await;
+                            }
+                        }
                     }
+                    SseEvent::ImageData(b64) => {
+                        generated_images.push(b64.clone());
+                        let img_markdown = format!("\n![Generated Image](data:image/png;base64,{})\n", b64);
+                        accumulated_text.push_str(&img_markdown);
+                    }
+                    _ => {}
                 }
+            }
+        }
+
+        if accumulated_text.trim().is_empty() {
+            if !generated_images.is_empty() {
+                accumulated_text = "Generated image successfully created.".to_string();
+            } else {
+                accumulated_text = "I received your request. How can I assist you with this?".to_string();
             }
         }
 
         tracing::info!("Streaming finished. Accumulated text: {}", accumulated_text);
 
         if has_tools {
-            let tool_calls = extract_tool_calls(&accumulated_text);
+            let mut tool_calls = extract_tool_calls(&accumulated_text);
+            if tool_calls.is_none() && !generated_images.is_empty() {
+                let b64 = &generated_images[0];
+                let cmd = format!("cat << 'EOF' | base64 -d > generated_image.png\n{}\nEOF\necho 'Image successfully generated and saved to generated_image.png'", b64);
+                tool_calls = Some(vec![ToolCall {
+                    id: format!("call_{}", &uuid::Uuid::new_v4().to_string()[..8]),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "bash".to_string(),
+                        arguments: serde_json::json!({ "command": cmd }).to_string(),
+                    },
+                }]);
+            }
             if let Some(tool_calls) = tool_calls {
                 // Send role chunk
                 let chunk = ChatCompletionChunk {

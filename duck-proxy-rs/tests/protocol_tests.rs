@@ -72,3 +72,20 @@ fn test_multi_turn_history_normalization() {
     assert_eq!(normalized[1].content, "First answer");
     assert_eq!(normalized[2].content, "Second question");
 }
+
+#[test]
+fn test_image_generation_intent_detection() {
+    use duck_proxy_rs::api::chat::is_image_generation_intent;
+
+    let img_msgs_1 = vec![ChatMessage::user("can u gen img of a horse")];
+    assert!(is_image_generation_intent("gpt-5.6-luna", "duckproxy/gpt-5.6-luna", &img_msgs_1));
+
+    let img_msgs_2 = vec![ChatMessage::user("generate an image of a neon cyber duck")];
+    assert!(is_image_generation_intent("gpt-5.6-luna", "gpt-5.6-luna", &img_msgs_2));
+
+    let img_msgs_3 = vec![ChatMessage::user("draw a sunset over the mountains")];
+    assert!(is_image_generation_intent("gpt-5.6-luna", "gpt-5.6-luna", &img_msgs_3));
+
+    let code_msgs = vec![ChatMessage::user("Write a function to calculate Fibonacci in Rust")];
+    assert!(!is_image_generation_intent("gpt-5.6-luna", "gpt-5.6-luna", &code_msgs));
+}
