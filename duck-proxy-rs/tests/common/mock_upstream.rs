@@ -231,6 +231,16 @@ impl MockDuckServer {
             .await;
     }
 
+    /// Preset: Chat completion returning HTTP error status for a specific model.
+    pub async fn mock_chat_error_for_model(&self, model: &str, status_code: u16, error_body: &str) {
+        Mock::given(method("POST"))
+            .and(path("/duckchat/v1/chat"))
+            .and(DuckPayloadMatcher::for_model(model))
+            .respond_with(ResponseTemplate::new(status_code).set_body_string(error_body))
+            .mount(&self.server)
+            .await;
+    }
+
     /// Preset: Chat completion returning SSE error frame.
     pub async fn mock_chat_sse_error(&self, status: u16, error_type: &str) {
         let sse_body = format!(

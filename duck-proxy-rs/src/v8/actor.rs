@@ -16,6 +16,8 @@ use crate::v8::stubs::{extract_html_lookup, generate_browser_stubs, wrap_challen
 pub struct ChallengeRequest {
     /// The base64-encoded challenge string from `x-vqd-hash-1`.
     pub challenge_b64: String,
+    /// Optional User-Agent to match browser fingerprint.
+    pub user_agent: Option<String>,
     /// Channel to send back the solved result.
     pub reply: oneshot::Sender<Result<String, String>>,
 }
@@ -27,11 +29,21 @@ pub struct V8ActorHandle {
 }
 
 impl V8ActorHandle {
-    /// Sends a challenge to the V8 actor and awaits the result.
+    /// Sends a challenge to the V8 actor and awaits the result with default User-Agent.
     pub async fn solve_challenge(&self, challenge_b64: String) -> Result<String, String> {
+        self.solve_challenge_with_ua(challenge_b64, None).await
+    }
+
+    /// Sends a challenge to the V8 actor with a specific User-Agent.
+    pub async fn solve_challenge_with_ua(
+        &self,
+        challenge_b64: String,
+        user_agent: Option<String>,
+    ) -> Result<String, String> {
         let (reply_tx, reply_rx) = oneshot::channel();
         let request = ChallengeRequest {
             challenge_b64,
+            user_agent,
             reply: reply_tx,
         };
         self.sender
@@ -71,7 +83,7 @@ pub fn spawn_v8_actor() -> V8ActorHandle {
             tracing::info!("V8 challenge solver actor started");
 
             while let Some(request) = rx.blocking_recv() {
-                let result = solve_challenge_sync(&request.challenge_b64);
+                let result = solve_challenge_sync(&request.challenge_b64, request.user_agent.as_deref());
                 let _ = request.reply.send(result);
             }
 
@@ -83,8 +95,9 @@ pub fn spawn_v8_actor() -> V8ActorHandle {
 }
 
 /// Synchronously solves a challenge (runs on the V8 actor thread).
-pub fn solve_challenge_sync(challenge_b64: &str) -> Result<String, String> {
+pub fn solve_challenge_sync(challenge_b64: &str, user_agent: Option<&str>) -> Result<String, String> {
     let trimmed = challenge_b64.trim();
+    let ua = user_agent.unwrap_or(USER_AGENT);
 
     // 1. Decode base64 — if not valid base64 (e.g. plain test token fixture), pass through as-is
     let challenge_bytes = match BASE64_STANDARD.decode(trimmed) {
@@ -142,7 +155,7 @@ pub fn solve_challenge_sync(challenge_b64: &str) -> Result<String, String> {
     // 3. Real JS Challenge: Execute in V8 with browser stubs
     let html_lookup = extract_html_lookup(str_trimmed);
     let lookup_json = serde_json::to_string(&html_lookup).unwrap_or_else(|_| "{}".to_string());
-    let stubs = generate_browser_stubs(USER_AGENT, Some(&lookup_json));
+    let stubs = generate_browser_stubs(ua, Some(&lookup_json));
     let wrapped = wrap_challenge_code(str_trimmed);
 
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
@@ -175,28 +188,35 @@ pub fn solve_challenge_sync(challenge_b64: &str) -> Result<String, String> {
     let mut parsed: serde_json::Value = serde_json::from_str(&json_str)
         .map_err(|e| format!("Failed to parse V8 JSON result: {}", e))?;
 
-    // Post-process client_hashes: client_hashes[0] = USER_AGENT, then hash all items with b64_sha256
+    // Post-process client_hashes: ensure client_hashes[0] is current UA and all elements are b64_sha256 hashed
     if let Some(client_hashes) = parsed.get_mut("client_hashes").and_then(|v| v.as_array_mut()) {
         if !client_hashes.is_empty() {
-            client_hashes[0] = serde_json::Value::String(USER_AGENT.to_string());
-            for item in client_hashes.iter_mut() {
-                if let Some(s) = item.as_str() {
-                    *item = serde_json::Value::String(b64_sha256(s));
-                }
+            client_hashes[0] = serde_json::Value::String(ua.to_string());
+        }
+        for item in client_hashes.iter_mut() {
+            if let Some(s) = item.as_str() {
+                *item = serde_json::Value::String(b64_sha256(s));
             }
         }
     }
 
-    // Inject meta
+    // Ensure meta contains required origin, stack, and duration fields
     if let Some(obj) = parsed.as_object_mut() {
         let meta = obj.entry("meta").or_insert(serde_json::json!({}));
         if let Some(meta_obj) = meta.as_object_mut() {
-            meta_obj.insert("origin".to_string(), serde_json::json!("https://duck.ai"));
-            meta_obj.insert(
-                "stack".to_string(),
-                serde_json::json!("Error\n    at l (https://duck.ai/dist/duckai-dist/entry.duckai.c0328fc12a6573e54bd9.js:2:1833090)\n    at async https://duck.ai/dist/duckai-dist/entry.duckai.c0328fc12a6573e54bd9.js:2:1620812"),
-            );
-            meta_obj.insert("duration".to_string(), serde_json::json!("25"));
+            if !meta_obj.contains_key("origin") {
+                meta_obj.insert("origin".to_string(), serde_json::json!("https://duck.ai"));
+            }
+            if !meta_obj.contains_key("stack") {
+                meta_obj.insert(
+                    "stack".to_string(),
+                    serde_json::json!("Error\nat l (https://duck.ai/dist/duckai-dist/entry.duckai.4a6753f9e3e9d2695cc0.js:2:1833590)\nat async https://duck.ai/dist/duckai-dist/entry.duckai.4a6753f9e3e9d2695cc0.js:2:1621312"),
+                );
+            }
+            if !meta_obj.contains_key("duration") {
+                let jitter = (chrono::Utc::now().timestamp_subsec_millis() as usize % 10) + 20;
+                meta_obj.insert("duration".to_string(), serde_json::json!(format!("{}", jitter)));
+            }
         }
     }
 
@@ -229,7 +249,7 @@ mod tests {
             serde_json::to_string(&challenge).unwrap().as_bytes()
         );
 
-        let result = solve_challenge_sync(&challenge_b64).unwrap();
+        let result = solve_challenge_sync(&challenge_b64, None).unwrap();
 
         let decoded = BASE64_STANDARD.decode(&result).unwrap();
         let result_json: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
@@ -241,11 +261,41 @@ mod tests {
     }
 
     #[test]
+    fn test_solve_challenge_sync_legacy() {
+        let challenge_json = serde_json::json!({
+            "server_hashes": ["hash1", "hash2", "hash3"],
+            "client_hashes": ["dummy", "str1", "str2"],
+            "signals": {},
+            "meta": {}
+        });
+        let challenge_b64 = BASE64_STANDARD.encode(serde_json::to_string(&challenge_json).unwrap().as_bytes());
+        let result = solve_challenge_sync(&challenge_b64, None).unwrap();
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_solve_challenge_sync_js() {
+        let js_code = r#"
+            (function() {
+                return {
+                    server_hashes: ["s1", "s2", "s3"],
+                    client_hashes: [navigator.userAgent, "val1"],
+                    signals: {},
+                    meta: {}
+                };
+            })()
+        "#;
+        let js_b64 = BASE64_STANDARD.encode(js_code.as_bytes());
+        let result = solve_challenge_sync(&js_b64, None).unwrap();
+        assert!(!result.is_empty());
+    }
+
+    #[test]
     fn test_solve_challenge_real_js() {
         let js = "(async function() { return { server_hashes: ['test1234'], client_hashes: ['dummy_ua'], signals: {}, meta: {} }; })()";
         let js_b64 = BASE64_STANDARD.encode(js.as_bytes());
 
-        let result = solve_challenge_sync(&js_b64).unwrap();
+        let result = solve_challenge_sync(&js_b64, None).unwrap();
         let decoded = BASE64_STANDARD.decode(&result).unwrap();
         let json: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
 

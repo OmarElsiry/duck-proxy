@@ -183,7 +183,19 @@ var window;
 window = __mkObj('window', {
   document: document,
   __DDG_BE_VERSION__: 1, __DDG_FE_CHAT_HASH__: 1,
-  navigator: __mkObj('navigator', { userAgent: __ua, webdriver: false, language: 'en-US', languages: ['en-US','en'], platform: 'MacIntel', vendor: 'Apple Computer, Inc.', appVersion: '5.0', cookieEnabled: true, onLine: true, hardwareConcurrency: 8, deviceMemory: 8 }),
+  navigator: __mkObj('navigator', {
+    userAgent: __ua,
+    webdriver: false,
+    language: 'en-US',
+    languages: ['en-US','en'],
+    platform: (__ua.indexOf('Win') !== -1 ? 'Win32' : (__ua.indexOf('Mac') !== -1 ? 'MacIntel' : 'Linux x86_64')),
+    vendor: (__ua.indexOf('Chrome') !== -1 ? 'Google Inc.' : (__ua.indexOf('Apple') !== -1 ? 'Apple Computer, Inc.' : '')),
+    appVersion: '5.0',
+    cookieEnabled: true,
+    onLine: true,
+    hardwareConcurrency: 8,
+    deviceMemory: 8
+  }),
   innerWidth: 1280, innerHeight: 800, outerWidth: 1280, outerHeight: 800, devicePixelRatio: 1,
   screen: __mkObj('screen', { width:1920, height:1080, availWidth:1920, availHeight:1080, colorDepth:24, pixelDepth:24 }),
   location: __mkObj('location', { href:'https://duckduckgo.com/', origin:'https://duckduckgo.com', host:'duckduckgo.com', hostname:'duckduckgo.com', protocol:'https:', pathname:'/', search:'', hash:'', port:'' }),

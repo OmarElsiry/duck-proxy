@@ -60,11 +60,13 @@ pub async fn generate_image(
         content: req.prompt,
     }];
 
+    let conv_id = uuid::Uuid::new_v4().to_string();
     let payload = build_chat_payload(
         IMAGE_GEN_CHAT_MODEL,
         messages,
         state.duck_client.keypair(),
         true,
+        &conv_id,
     );
 
     let resp = state.duck_client.send_chat_request(&payload).await?;

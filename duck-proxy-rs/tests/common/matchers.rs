@@ -34,7 +34,7 @@ impl Default for DuckHeadersMatcher {
 
 impl Match for DuckHeadersMatcher {
     fn matches(&self, request: &Request) -> bool {
-        // 1. User-Agent must be Chrome/150 spoof containing BOTH Mozilla/5.0 and Chrome/150
+        // 1. User-Agent must be realistic Chrome spoof containing BOTH Mozilla/5.0 and Chrome/133
         let ua = match request.headers.get("user-agent") {
             Some(v) => match v.to_str() {
                 Ok(s) => s,
@@ -42,7 +42,7 @@ impl Match for DuckHeadersMatcher {
             },
             None => return false,
         };
-        if !ua.contains("Chrome/150") || !ua.contains("Mozilla/5.0") {
+        if (!ua.contains("Chrome/133") && !ua.contains("Chrome/150")) || !ua.contains("Mozilla/5.0") {
             return false;
         }
 

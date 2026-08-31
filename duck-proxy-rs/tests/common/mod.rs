@@ -33,6 +33,10 @@ impl Drop for TestHarness {
 impl TestHarness {
     /// Initialize a new test harness with mock upstream and test proxy server on loopback.
     pub async fn new() -> Self {
+        Self::with_auto_fallback(false).await
+    }
+
+    pub async fn with_auto_fallback(auto_fallback: bool) -> Self {
         let mock_upstream = MockDuckServer::start().await;
         let upstream_url = mock_upstream.uri();
 
@@ -40,6 +44,7 @@ impl TestHarness {
         config.upstream_base_url = upstream_url.clone();
         config.server.host = "127.0.0.1".to_string();
         config.server.port = 0; // Ephemeral OS port
+        config.auto_fallback = auto_fallback;
 
         let listener = TcpListener::bind("127.0.0.1:0")
             .await

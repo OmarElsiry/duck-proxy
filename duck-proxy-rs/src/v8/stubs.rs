@@ -29,7 +29,7 @@ pub fn generate_browser_stubs(user_agent: &str, html_lookup_json: Option<&str>) 
 /// the resolved result into `__R` or caught error into `__E`.
 pub fn wrap_challenge_code(challenge_js: &str) -> String {
     format!(
-        "({}).then(function(v){{ __R = v; }}).catch(function(e){{ __E = String((e && e.stack) || e); }});",
+        "Promise.resolve({}).then(function(v){{ __R = v; }}).catch(function(e){{ __E = String((e && e.stack) || e); }});",
         challenge_js
     )
 }
@@ -149,7 +149,7 @@ mod tests {
     fn test_wrap_challenge_code() {
         let code = "async function() { return { ok: true }; }()";
         let wrapped = wrap_challenge_code(code);
-        assert!(wrapped.starts_with('('));
+        assert!(wrapped.starts_with("Promise.resolve("));
         assert!(wrapped.contains(".then(function(v){ __R = v; })"));
         assert!(wrapped.contains(".catch(function(e){ __E = String((e && e.stack) || e); });"));
     }

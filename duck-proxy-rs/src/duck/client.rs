@@ -1,6 +1,6 @@
 //! Duck.ai HTTP client with VQD token chaining, telemetry, session warming, and V8 challenge solving.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use base64::Engine;
@@ -12,11 +12,16 @@ use crate::error::AppError;
 use crate::v8::{spawn_v8_actor, V8ActorHandle};
 use super::types::*;
 
-/// User-Agent string used for all Duck.ai requests.
-pub const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
+/// User-Agent rotation pool for anti-rate-limit resilience.
+pub const USER_AGENTS: &[&str] = &[
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+];
+
+/// Primary User-Agent string used for default matching.
+pub const USER_AGENT: &str = USER_AGENTS[0];
 
 /// Frontend version header value.
-pub const FE_VERSION: &str = "serp_20260827_190157_ET-5738d187a3dbca905a80324bd698765a27bf6e44";
+pub const FE_VERSION: &str = "serp_20260831_112009_ET-c238c4c34e61772c1d76362b219898d0899fb143";
 
 /// Maximum retry attempts for chat requests.
 const MAX_RETRIES: u32 = 3;
@@ -25,16 +30,43 @@ const MAX_RETRIES: u32 = 3;
 #[derive(Clone, Debug)]
 pub struct ModelSession {
     pub journey_id: String,
+    pub conversation_id: String,
     pub pending_challenge: Option<String>,
+    pub user_agent: String,
 }
 
 impl ModelSession {
     pub fn new() -> Self {
+        let ua_idx = (chrono::Utc::now().timestamp_subsec_nanos() as usize) % USER_AGENTS.len();
         Self {
             journey_id: uuid::Uuid::new_v4().simple().to_string(),
+            conversation_id: uuid::Uuid::new_v4().to_string(),
             pending_challenge: None,
+            user_agent: USER_AGENTS[ua_idx].to_string(),
         }
     }
+
+    pub fn rotate_user_agent(&mut self) {
+        let ua_idx = (chrono::Utc::now().timestamp_subsec_nanos() as usize) % USER_AGENTS.len();
+        self.user_agent = USER_AGENTS[ua_idx].to_string();
+        self.journey_id = uuid::Uuid::new_v4().simple().to_string();
+        self.conversation_id = uuid::Uuid::new_v4().to_string();
+        self.pending_challenge = None;
+    }
+}
+
+pub fn platform_for_ua(ua: &str) -> &'static str {
+    if ua.contains("Windows") {
+        "\"Windows\""
+    } else if ua.contains("Macintosh") {
+        "\"macOS\""
+    } else {
+        "\"Linux\""
+    }
+}
+
+pub fn sec_ch_ua_for_ua(_ua: &str) -> &'static str {
+    "\"Not(A:Brand\";v=\"99\", \"Google Chrome\";v=\"133\", \"Chromium\";v=\"133\""
 }
 
 impl Default for ModelSession {
@@ -46,10 +78,15 @@ impl Default for ModelSession {
 /// Core Duck.ai HTTP client with VQD token chaining, cookie warming, and V8 challenge solver.
 pub struct DuckClient {
     http: reqwest::Client,
+    status_http: reqwest::Client,
     upstream_base_url: String,
     sessions: Arc<RwLock<HashMap<String, ModelSession>>>,
-    warmed: Arc<RwLock<bool>>,
+    vqd_pool: Arc<Mutex<Vec<String>>>,
+    warmed: Arc<RwLock<HashSet<String>>>,
     status_lock: Arc<Mutex<()>>,
+    chat_lock: Arc<Mutex<()>>,
+    last_status_call: Arc<Mutex<Option<tokio::time::Instant>>>,
+    last_chat_call: Arc<Mutex<Option<tokio::time::Instant>>>,
     keypair: EphemeralKeypair,
     v8_actor: V8ActorHandle,
 }
@@ -72,18 +109,61 @@ impl DuckClient {
             .build()
             .expect("Failed to build HTTP client");
 
+        let status_http = reqwest::Client::builder()
+            .build()
+            .expect("Failed to build status HTTP client");
+
         let keypair = EphemeralKeypair::generate()
-            .expect("Failed to generate ephemeral RSA keypair");
+            .expect("Failed to generate ephemeral keypair for Duck.ai client");
 
         Self {
             http,
+            status_http,
             upstream_base_url: upstream_base_url.trim_end_matches('/').to_string(),
             sessions: Arc::new(RwLock::new(HashMap::new())),
-            warmed: Arc::new(RwLock::new(false)),
+            vqd_pool: Arc::new(Mutex::new(Vec::new())),
+            warmed: Arc::new(RwLock::new(HashSet::new())),
             status_lock: Arc::new(Mutex::new(())),
+            chat_lock: Arc::new(Mutex::new(())),
+            last_status_call: Arc::new(Mutex::new(None)),
+            last_chat_call: Arc::new(Mutex::new(None)),
             keypair,
             v8_actor,
         }
+    }
+
+    /// Starts a background token prefetcher that maintains a pool of fresh VQD challenges.
+    pub fn start_background_pool_worker(self: &Arc<Self>) {
+        let client = Arc::clone(self);
+        tokio::spawn(async move {
+            loop {
+                let pool_len = {
+                    let pool = client.vqd_pool.lock().await;
+                    pool.len()
+                };
+
+                if pool_len < 3 {
+                    let dummy_journey = uuid::Uuid::new_v4().simple().to_string();
+                    match client.fetch_raw_status_challenge(&dummy_journey, USER_AGENT).await {
+                        Ok(chal) => {
+                            let mut pool = client.vqd_pool.lock().await;
+                            if pool.len() < 5 {
+                                pool.push(chal);
+                                tracing::info!("Pre-fetched fresh VQD challenge into pool (total: {})", pool.len());
+                            }
+                            tokio::time::sleep(tokio::time::Duration::from_millis(4000)).await;
+                            continue;
+                        }
+                        Err(_) => {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(35)).await;
+                            continue;
+                        }
+                    }
+                }
+
+                tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+            }
+        });
     }
 
     /// Returns the browser fingerprint headers required by Duck.ai.
@@ -92,10 +172,9 @@ impl DuckClient {
         headers.insert("user-agent", HeaderValue::from_static(USER_AGENT));
         headers.insert("accept-language", HeaderValue::from_static("en-US,en;q=0.9"));
         headers.insert("referer", HeaderValue::from_static("https://duck.ai/"));
-        headers.insert("origin", HeaderValue::from_static("https://duck.ai"));
         headers.insert(
             "sec-ch-ua",
-            HeaderValue::from_static(r#""Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150""#),
+            HeaderValue::from_static(r#""Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133""#),
         );
         headers.insert("sec-ch-ua-mobile", HeaderValue::from_static("?0"));
         headers.insert("sec-ch-ua-platform", HeaderValue::from_static(r#""Linux""#));
@@ -120,45 +199,57 @@ impl DuckClient {
         None
     }
 
-    /// Warms up session cookies by visiting the homepage and auth/token endpoints.
-    pub async fn warm(&self) {
+    /// Warms up session cookies for a specific journey ID.
+    pub async fn warm(&self, journey_id: &str) {
         {
-            let is_warmed = *self.warmed.read().await;
-            if is_warmed {
+            let warmed = self.warmed.read().await;
+            if warmed.contains(journey_id) {
                 return;
             }
         }
 
         let mut warmed_lock = self.warmed.write().await;
-        if *warmed_lock {
+        if warmed_lock.contains(journey_id) {
             return;
         }
 
-        let _ = self.http.get(&format!("{}/", self.upstream_base_url)).send().await;
-        let _ = self.http.get(&format!("{}/duckchat/v1/auth/token", self.upstream_base_url)).send().await;
-        *warmed_lock = true;
+        // Fetch landing page once to initialize cookies if needed
+        let _ = self.http.get(&self.upstream_base_url).send().await;
+
+        warmed_lock.insert(journey_id.to_string());
     }
 
-    /// Retrieves or initializes the session for a given model.
+    /// Forces a rewarm on the next request.
+    pub async fn force_rewarm(&self, journey_id: &str) {
+        let mut warmed = self.warmed.write().await;
+        warmed.remove(journey_id);
+        let mut sessions = self.sessions.write().await;
+        for s in sessions.values_mut() {
+            s.rotate_user_agent();
+        }
+        let mut pool = self.vqd_pool.lock().await;
+        pool.clear();
+    }
+
+    /// Gets or creates a per-model session ensuring unique journey ID.
     pub async fn get_or_create_session(&self, model: &str) -> ModelSession {
         let mut sessions = self.sessions.write().await;
         sessions.entry(model.to_string()).or_default().clone()
     }
 
-    /// Generates telemetry headers for a chat request.
+    /// Generates telemetry headers for a chat request with natural jitter.
     pub fn generate_telemetry_headers(&self, journey_id: &str) -> Vec<(String, String)> {
         let now_ms = chrono::Utc::now().timestamp_millis();
-        let start_ms = now_ms - 30000;
+        let jitter = (now_ms as u64 % 200) as i64;
+        let start_ms = now_ms - 1500 - jitter;
         let signals = FeSignals {
             start: start_ms,
             events: vec![
-                FeEvent { name: "onboarding_impression".to_string(), delta: 240, trusted: None },
-                FeEvent { name: "action".to_string(), delta: 12000, trusted: Some(true) },
-                FeEvent { name: "onboarding_impression".to_string(), delta: 15500, trusted: None },
-                FeEvent { name: "onboarding_finish".to_string(), delta: 25000, trusted: None },
-                FeEvent { name: "startNewChat_free".to_string(), delta: 27500, trusted: None },
+                FeEvent { name: "startNewChat_free".to_string(), delta: 50 + (jitter % 20), trusted: None },
+                FeEvent { name: "recentChatsListImpression".to_string(), delta: 180 + (jitter % 30), trusted: None },
+                FeEvent { name: "action".to_string(), delta: 800 + (jitter % 100), trusted: Some(true) },
             ],
-            end: 28800,
+            end: 880 + jitter,
         };
         let signals_json = serde_json::to_string(&signals).unwrap_or_default();
         let signals_b64 = BASE64_STANDARD.encode(signals_json.as_bytes());
@@ -170,29 +261,59 @@ impl DuckClient {
         ]
     }
 
-    /// Fetches an initial raw VQD challenge from /duckchat/v1/status.
-    pub async fn fetch_raw_status_challenge(&self, journey_id: &str) -> Result<String, AppError> {
-        self.warm().await;
+    /// Fetches an initial raw VQD challenge from /duckchat/v1/status with resilient backoff.
+    pub async fn fetch_raw_status_challenge(&self, journey_id: &str, user_agent: &str) -> Result<String, AppError> {
         let _guard = self.status_lock.lock().await;
+
+        // Ensure at least 3.5s spacing between consecutive /status requests to avoid IP rate limits
+        {
+            let mut last_call = self.last_status_call.lock().await;
+            if let Some(prev) = *last_call {
+                let elapsed = prev.elapsed();
+                if elapsed < tokio::time::Duration::from_millis(3500) {
+                    let sleep_dur = tokio::time::Duration::from_millis(3500) - elapsed;
+                    tokio::time::sleep(sleep_dur).await;
+                }
+            }
+            *last_call = Some(tokio::time::Instant::now());
+        }
+
         let url = format!("{}/duckchat/v1/status", self.upstream_base_url);
 
-        for attempt in 0..5 {
-            let resp = self.http
+        for attempt in 0..2 {
+            let ua = if attempt == 0 {
+                user_agent
+            } else {
+                let idx = (chrono::Utc::now().timestamp_subsec_millis() as usize + attempt as usize) % USER_AGENTS.len();
+                USER_AGENTS[idx]
+            };
+
+            let req = self.status_http
                 .get(&url)
+                .header("user-agent", ua)
+                .header("sec-ch-ua", sec_ch_ua_for_ua(ua))
+                .header("sec-ch-ua-platform", platform_for_ua(ua))
+                .header("sec-ch-ua-mobile", "?0")
                 .header("accept", "*/*")
                 .header("x-vqd-accept", "1")
-                .header("x-ddg-journey-id", journey_id)
-                .header("cache-control", "no-store")
-                .header("pragma", "no-cache")
-                .header("referer", "https://duck.ai/")
-                .header("origin", "https://duck.ai")
-                .send()
-                .await?;
+                .header("referer", "https://duck.ai/");
+
+            let resp = req.send().await?;
 
             if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                if attempt < 4 {
-                    tracing::warn!("Duck.ai status 429, waiting 3.5s (attempt {}/5)...", attempt + 1);
-                    tokio::time::sleep(tokio::time::Duration::from_millis(3500)).await;
+                let from_pool = {
+                    let mut pool = self.vqd_pool.lock().await;
+                    pool.pop()
+                };
+                if let Some(token) = from_pool {
+                    tracing::info!("Using pooled VQD challenge on status 429");
+                    return Ok(token);
+                }
+
+                if attempt < 1 {
+                    let delay_ms = 35000 + (chrono::Utc::now().timestamp_subsec_millis() as u64 % 500);
+                    tracing::warn!("Duck.ai status 429, cooling down for {}ms before retry (attempt 1/2)...", delay_ms);
+                    tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                     continue;
                 }
                 return Err(AppError::upstream_rate_limit(
@@ -202,6 +323,11 @@ impl DuckClient {
             }
 
             if !resp.status().is_success() {
+                if attempt < 1 {
+                    self.force_rewarm(journey_id).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    continue;
+                }
                 return Err(AppError::bad_gateway(format!(
                     "VQD status request failed with HTTP {}",
                     resp.status()
@@ -218,51 +344,305 @@ impl DuckClient {
         Err(AppError::upstream_rate_limit("Failed to obtain VQD token", Some(4)))
     }
 
-    /// Gets and solves a VQD challenge header for the specified model.
+    /// Gets and solves a fresh VQD challenge header for the specified model.
     pub async fn get_solved_challenge_header(&self, model: &str, journey_id: &str) -> Result<String, AppError> {
-        let raw_chal = {
-            let mut sessions = self.sessions.write().await;
-            let session = sessions.entry(model.to_string()).or_default();
-            session.pending_challenge.take()
+        let session = self.get_or_create_session(model).await;
+        let from_pool = {
+            let mut pool = self.vqd_pool.lock().await;
+            pool.pop()
         };
 
-        let raw = match raw_chal {
+        let raw = match from_pool {
             Some(c) => c,
-            None => self.fetch_raw_status_challenge(journey_id).await?,
+            None => self.fetch_raw_status_challenge(journey_id, &session.user_agent).await?,
         };
 
-        self.v8_actor.solve_challenge(raw).await
+        {
+            let mut sessions = self.sessions.write().await;
+            let s = sessions.entry(model.to_string()).or_default();
+            s.conversation_id = uuid::Uuid::new_v4().to_string();
+        }
+
+        self.v8_actor.solve_challenge_with_ua(raw, Some(session.user_agent.clone())).await
             .map_err(|e| AppError::bad_gateway(format!("V8 Challenge solver error: {}", e)))
     }
 
-    /// Stores a raw chained VQD challenge from upstream response for a model.
-    async fn store_chained_challenge(&self, model: &str, raw_challenge: String) {
-        let mut sessions = self.sessions.write().await;
-        let session = sessions.entry(model.to_string()).or_default();
-        session.pending_challenge = Some(raw_challenge);
+    /// Stores a raw chained VQD challenge (stateless mode leaves each turn fresh).
+    async fn store_chained_challenge(&self, _model: &str, _raw_challenge: String) {
+        // Stateless mode avoids ERR_CONVERSATION_LIMIT on IDE clients that send full history
     }
 
-    /// Resets session journey ID and challenge for a given model.
+    /// Resets session journey ID and challenge for a given model with User-Agent rotation.
     async fn reset_model_session(&self, model: &str) {
         let mut sessions = self.sessions.write().await;
-        sessions.insert(model.to_string(), ModelSession::new());
+        let mut new_session = ModelSession::new();
+        new_session.rotate_user_agent();
+        sessions.insert(model.to_string(), new_session);
     }
 
-    /// Sends a chat request to Duck.ai with automatic challenge solving and error recovery retry.
-    pub async fn send_chat_request(
+    /// Sends a chat request to Duck.ai with automatic challenge solving and candidate model fallback cascade.
+    pub async fn send_chat_request_cascade(
+        &self,
+        requested_model: &str,
+        messages: &[DuckChatMessage],
+        fallback_chain: &[String],
+    ) -> Result<(reqwest::Response, String), AppError> {
+        let _chat_guard = self.chat_lock.lock().await;
+        let mut last_err = None;
+        const MAX_CASCADE_ROUNDS: usize = 2;
+
+        for round in 0..MAX_CASCADE_ROUNDS {
+            if round > 0 {
+                let backoff_ms = 3000 + (chrono::Utc::now().timestamp_subsec_millis() as u64 % 200);
+                tracing::warn!(
+                    "Model '{}' rate limited or waiting for cooldown, waiting {}ms before round {}/{}...",
+                    requested_model,
+                    backoff_ms,
+                    round + 1,
+                    MAX_CASCADE_ROUNDS
+                );
+                tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
+            }
+
+            for (idx, candidate_model) in fallback_chain.iter().enumerate() {
+                let session = self.get_or_create_session(candidate_model).await;
+                let solved_vqd = match self.get_solved_challenge_header(candidate_model, &session.journey_id).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        last_err = Some(e);
+                        continue;
+                    }
+                };
+
+                let fresh_conversation_id = uuid::Uuid::new_v4().to_string();
+                let payload = crate::duck::payload::build_chat_payload(
+                    candidate_model,
+                    messages.to_vec(),
+                    &self.keypair,
+                    false,
+                    &fresh_conversation_id,
+                );
+
+                if idx > 0 || round > 0 {
+                    tracing::warn!(
+                        "Attempting chat request (round {}/{}) from '{}' to candidate model '{}'...",
+                        round + 1,
+                        MAX_CASCADE_ROUNDS,
+                        requested_model,
+                        candidate_model
+                    );
+                }
+
+                // Ensure at least 4.5s spacing between consecutive chat requests to avoid upstream IP rate limits
+                {
+                    let mut last_call = self.last_chat_call.lock().await;
+                    if let Some(prev) = *last_call {
+                        let elapsed = prev.elapsed();
+                        if elapsed < tokio::time::Duration::from_millis(4500) {
+                            let sleep_dur = tokio::time::Duration::from_millis(4500) - elapsed;
+                            tokio::time::sleep(sleep_dur).await;
+                        }
+                    }
+                    *last_call = Some(tokio::time::Instant::now());
+                }
+
+                let url = format!("{}/duckchat/v1/chat", self.upstream_base_url);
+                let mut request = self.http
+                    .post(&url)
+                    .header("user-agent", &session.user_agent)
+                    .header("sec-ch-ua", sec_ch_ua_for_ua(&session.user_agent))
+                    .header("sec-ch-ua-platform", platform_for_ua(&session.user_agent))
+                    .header("sec-ch-ua-mobile", "?0")
+                    .header("x-vqd-hash-1", &solved_vqd)
+                    .header("origin", "https://duck.ai")
+                    .header("referer", "https://duck.ai/")
+                    .header("accept", "text/event-stream")
+                    .header("content-type", "application/json");
+
+                for (key, value) in self.generate_telemetry_headers(&session.journey_id) {
+                    request = request.header(&key, &value);
+                }
+
+                match request.json(&payload).send().await {
+                    Ok(resp) => {
+                        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                            let maybe_new_vqd = Self::extract_vqd_header(resp.headers());
+                            let body_429 = resp.text().await.unwrap_or_default();
+                            tracing::warn!("Duck.ai model '{}' rate limited (HTTP 429). Upstream body: {}", candidate_model, body_429);
+                            if body_429.contains("ERR_CONVERSATION_LIMIT") || body_429.contains("ERR_SERVICE_UNAVAILABLE") {
+                                tracing::info!("Resetting session for model '{}' due to rate limit error: {}", candidate_model, body_429);
+                                self.reset_model_session(candidate_model).await;
+                                let new_journey = uuid::Uuid::new_v4().simple().to_string();
+                                self.warm(&new_journey).await;
+                            } else if let Some(new_vqd) = maybe_new_vqd {
+                                self.store_chained_challenge(candidate_model, new_vqd).await;
+                            }
+                            last_err = Some(AppError::upstream_rate_limit(
+                                format!("Duck.ai model '{}' rate limited (HTTP 429): {}", candidate_model, body_429),
+                                Some(4),
+                            ));
+                            continue;
+                        }
+
+                        if resp.status().as_u16() == 418 {
+                            let body_str = resp.text().await.unwrap_or_default();
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&body_str) {
+                                if let Some(cd) = val.get("cd") {
+                                    let q = cd.get("q").and_then(|v| v.as_str()).unwrap_or("");
+                                    let cc = cd.get("cc").and_then(|v| v.as_str()).unwrap_or("duckchat");
+                                    let s = cd.get("s").and_then(|v| v.as_str()).unwrap_or("index");
+                                    let r = cd.get("r").and_then(|v| v.as_str()).unwrap_or("euw");
+                                    let gk = cd.get("gk").and_then(|v| v.as_str()).unwrap_or("");
+                                    let p = cd.get("p").and_then(|v| v.as_str()).unwrap_or("");
+                                    let o = cd.get("o").and_then(|v| v.as_str()).unwrap_or("");
+
+                                    let p_parts: Vec<&str> = p.split('-').collect();
+                                    let acs = if p_parts.len() >= 4 {
+                                        format!("{}-{}", p_parts[0], p_parts[3])
+                                    } else if p_parts.len() >= 2 {
+                                        format!("{}-{}", p_parts[0], p_parts[1])
+                                    } else {
+                                        p.to_string()
+                                    };
+
+                                    let params = [
+                                        ("q", q),
+                                        ("type", "anomaly"),
+                                        ("acs", acs.as_str()),
+                                        ("cc", cc),
+                                        ("gk", gk),
+                                        ("p", p),
+                                        ("o", o),
+                                        ("s", s),
+                                        ("r", r),
+                                    ];
+
+                                    tracing::info!("Auto-resolving Duck.ai 418 anomaly for model '{}'...", candidate_model);
+                                    let _ = self.http.get(format!("{}/anomaly.js", self.upstream_base_url))
+                                        .query(&params)
+                                        .header("user-agent", &session.user_agent)
+                                        .header("referer", "https://duck.ai/")
+                                        .send()
+                                        .await;
+                                }
+                            }
+
+                            tracing::warn!("Duck.ai 418 anomaly resolved, retrying chat request for model '{}' with fresh challenge...", candidate_model);
+                            tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+
+                            let fresh_vqd = match self.get_solved_challenge_header(candidate_model, &session.journey_id).await {
+                                Ok(v) => v,
+                                Err(_) => solved_vqd.clone(),
+                            };
+
+                            let mut retry_req = self.http
+                                .post(&url)
+                                .header("user-agent", &session.user_agent)
+                                .header("sec-ch-ua", sec_ch_ua_for_ua(&session.user_agent))
+                                .header("sec-ch-ua-platform", platform_for_ua(&session.user_agent))
+                                .header("sec-ch-ua-mobile", "?0")
+                                .header("x-vqd-hash-1", &fresh_vqd)
+                                .header("origin", "https://duck.ai")
+                                .header("referer", "https://duck.ai/")
+                                .header("accept", "text/event-stream")
+                                .header("content-type", "application/json");
+
+                            for (key, value) in self.generate_telemetry_headers(&session.journey_id) {
+                                retry_req = retry_req.header(&key, &value);
+                            }
+
+                            let retry_conversation_id = uuid::Uuid::new_v4().to_string();
+                            let retry_payload = crate::duck::payload::build_chat_payload(
+                                candidate_model,
+                                messages.to_vec(),
+                                &self.keypair,
+                                false,
+                                &retry_conversation_id,
+                            );
+
+                            if let Ok(retry_resp) = retry_req.json(&retry_payload).send().await {
+                                if retry_resp.status().is_success() {
+                                    if let Some(chained_vqd) = Self::extract_vqd_header(retry_resp.headers()) {
+                                        self.store_chained_challenge(candidate_model, chained_vqd).await;
+                                    }
+                                    return Ok((retry_resp, candidate_model.clone()));
+                                }
+                                let retry_status = retry_resp.status();
+                                let retry_body = retry_resp.text().await.unwrap_or_default();
+                                tracing::warn!("Anomaly retry for '{}' failed with HTTP {}: {}", candidate_model, retry_status, retry_body);
+                            }
+
+                            last_err = Some(AppError::bad_gateway(format!(
+                                "Duck.ai challenge rejected (418) for model '{}'",
+                                candidate_model
+                            )));
+                            continue;
+                        }
+
+                        if !resp.status().is_success() {
+                            let status = resp.status();
+                            tracing::warn!("Duck.ai model '{}' returned HTTP {}, checking next in fallback chain...", candidate_model, status);
+                            last_err = Some(AppError::bad_gateway(format!(
+                                "Duck.ai chat request failed with HTTP {}",
+                                status
+                            )));
+                            continue;
+                        }
+
+                        // Store chained challenge token from response headers
+                        if let Some(chained) = Self::extract_vqd_header(resp.headers()) {
+                            self.store_chained_challenge(candidate_model, chained).await;
+                        }
+
+                        return Ok((resp, candidate_model.clone()));
+                    }
+                    Err(err) => {
+                        last_err = Some(AppError::from(err));
+                    }
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| {
+            AppError::upstream_rate_limit("All models in fallback chain were rate limited", Some(4))
+        }))
+    }
+
+    /// Sends a chat request with an optional pre-solved challenge.
+    pub async fn send_chat_request_with_vqd(
         &self,
         payload: &DuckChatRequest,
+        given_vqd: Option<String>,
     ) -> Result<reqwest::Response, AppError> {
         let url = format!("{}/duckchat/v1/chat", self.upstream_base_url);
         let model = payload.model.clone();
 
         for attempt in 0..MAX_RETRIES {
             let session = self.get_or_create_session(&model).await;
-            let solved_vqd = self.get_solved_challenge_header(&model, &session.journey_id).await?;
+            let solved_vqd = match (attempt == 0, &given_vqd) {
+                (true, Some(v)) => v.clone(),
+                _ => match self.get_solved_challenge_header(&model, &session.journey_id).await {
+                    Ok(vqd) => vqd,
+                    Err(e) => {
+                        if attempt < MAX_RETRIES - 1 {
+                            self.force_rewarm(&session.journey_id).await;
+                            tokio::time::sleep(tokio::time::Duration::from_millis(500 * (1 << attempt))).await;
+                            continue;
+                        }
+                        return Err(e);
+                    }
+                },
+            };
 
             let mut request = self.http
                 .post(&url)
+                .header("user-agent", &session.user_agent)
+                .header("sec-ch-ua", sec_ch_ua_for_ua(&session.user_agent))
+                .header("sec-ch-ua-platform", platform_for_ua(&session.user_agent))
+                .header("sec-ch-ua-mobile", "?0")
                 .header("x-vqd-hash-1", &solved_vqd)
+                .header("origin", "https://duck.ai")
+                .header("referer", "https://duck.ai/")
                 .header("accept", "text/event-stream")
                 .header("content-type", "application/json");
 
@@ -273,24 +653,63 @@ impl DuckClient {
             let resp = request.json(payload).send().await?;
 
             if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                if attempt < MAX_RETRIES - 1 {
-                    self.reset_model_session(&model).await;
-                    tokio::time::sleep(tokio::time::Duration::from_millis(500 * (1 << attempt))).await;
-                    continue;
-                }
+                tracing::warn!("Duck.ai model '{}' rate limited (HTTP 429), triggering immediate cascade...", model);
+                self.reset_model_session(&model).await;
                 return Err(AppError::upstream_rate_limit(
-                    "Duck.ai chat endpoint rate limited",
+                    format!("Duck.ai model '{}' rate limited (HTTP 429)", model),
                     Some(4),
                 ));
             }
 
             if resp.status().as_u16() == 418 {
-                tracing::warn!("Duck.ai challenge rejected (418) for model '{}', resetting session and retrying...", model);
-                self.reset_model_session(&model).await;
-                if attempt < MAX_RETRIES - 1 {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(500 * (1 << attempt))).await;
-                    continue;
+                let body_str = resp.text().await.unwrap_or_default();
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&body_str) {
+                    if let Some(cd) = val.get("cd") {
+                        let q = cd.get("q").and_then(|v| v.as_str()).unwrap_or("");
+                        let cc = cd.get("cc").and_then(|v| v.as_str()).unwrap_or("duckchat");
+                        let s = cd.get("s").and_then(|v| v.as_str()).unwrap_or("index");
+                        let r = cd.get("r").and_then(|v| v.as_str()).unwrap_or("euw");
+                        let gk = cd.get("gk").and_then(|v| v.as_str()).unwrap_or("");
+                        let p = cd.get("p").and_then(|v| v.as_str()).unwrap_or("");
+                        let o = cd.get("o").and_then(|v| v.as_str()).unwrap_or("");
+
+                        let p_parts: Vec<&str> = p.split('-').collect();
+                        let acs = if p_parts.len() >= 4 {
+                            format!("{}-{}", p_parts[0], p_parts[3])
+                        } else if p_parts.len() >= 2 {
+                            format!("{}-{}", p_parts[0], p_parts[1])
+                        } else {
+                            p.to_string()
+                        };
+
+                        let params = [
+                            ("q", q),
+                            ("type", "anomaly"),
+                            ("acs", acs.as_str()),
+                            ("cc", cc),
+                            ("gk", gk),
+                            ("p", p),
+                            ("o", o),
+                            ("s", s),
+                            ("r", r),
+                        ];
+
+                        tracing::info!("Auto-resolving Duck.ai 418 anomaly for model '{}'...", model);
+                        let _ = self.http.get(format!("{}/anomaly.js", self.upstream_base_url))
+                            .query(&params)
+                            .header("user-agent", &session.user_agent)
+                            .header("referer", "https://duck.ai/")
+                            .send()
+                            .await;
+                    }
                 }
+
+                tracing::warn!("Duck.ai challenge rejected (418) for model '{}', resetting session and cascading...", model);
+                self.reset_model_session(&model).await;
+                return Err(AppError::bad_gateway(format!(
+                    "Duck.ai challenge rejected (418) for model '{}'",
+                    model
+                )));
             }
 
             if !resp.status().is_success() {
@@ -311,6 +730,14 @@ impl DuckClient {
         }
 
         Err(AppError::bad_gateway("Failed to complete chat request after retries"))
+    }
+
+    /// Sends a chat request to Duck.ai with automatic challenge solving and error recovery retry.
+    pub async fn send_chat_request(
+        &self,
+        payload: &DuckChatRequest,
+    ) -> Result<reqwest::Response, AppError> {
+        self.send_chat_request_with_vqd(payload, None).await
     }
 
     /// Returns a reference to the ephemeral keypair.

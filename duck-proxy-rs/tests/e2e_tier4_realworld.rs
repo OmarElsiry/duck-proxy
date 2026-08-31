@@ -111,10 +111,14 @@ async fn test_t4_02_long_code_generation_stream() {
 
     let (chunks, saw_done) = harness.read_sse_stream(resp).await;
     assert!(saw_done, "Stream must terminate with [DONE]");
-    assert_eq!(chunks.len(), 200, "Should receive all 200 code chunks");
+    let completion_chunks: Vec<_> = chunks
+        .into_iter()
+        .filter(|c| c.get("object").and_then(|o| o.as_str()) == Some("chat.completion.chunk"))
+        .collect();
+    assert_eq!(completion_chunks.len(), 200, "Should receive all 200 code chunks");
 
     let mut assembled_code = String::new();
-    for chunk in chunks {
+    for chunk in completion_chunks {
         if let Some(delta) = chunk
             .pointer("/choices/0/delta/content")
             .and_then(|v| v.as_str())

@@ -21,6 +21,7 @@ pub fn router() -> Router<AppState> {
         // OpenAI-Compatible v1 Endpoints
         .route("/v1/models", get(models::list_models))
         .route("/v1/chat/completions", post(chat::chat_completions))
+        .route("/v1/responses", post(chat::chat_completions))
         .route("/v1/images/generations", post(images::generate_image))
 }
 
