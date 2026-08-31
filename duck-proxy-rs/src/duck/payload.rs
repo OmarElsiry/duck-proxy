@@ -65,7 +65,7 @@ pub fn build_chat_payload(
         can_use_tools: true,
         reasoning_effort: "none".to_string(),
         can_use_approx_location: None,
-        can_delegate_image_generation: None,
+        can_delegate_image_generation: if is_image_gen { Some(true) } else { None },
         durable_stream: DurableStream {
             message_id,
             conversation_id,
@@ -108,7 +108,7 @@ mod tests {
         let payload = build_chat_payload("gpt-5.6-luna", messages, &keypair, true, "conv-2");
 
         assert_eq!(payload.metadata.tool_choice.generate_image, Some(true));
-        assert_eq!(payload.can_delegate_image_generation, None);
+        assert_eq!(payload.can_delegate_image_generation, Some(true));
         assert_eq!(payload.can_use_approx_location, None);
     }
 

@@ -21,7 +21,7 @@ pub const USER_AGENTS: &[&str] = &[
 pub const USER_AGENT: &str = USER_AGENTS[0];
 
 /// Frontend version header value.
-pub const FE_VERSION: &str = "serp_20260831_112009_ET-c238c4c34e61772c1d76362b219898d0899fb143";
+pub const FE_VERSION: &str = "serp_20260831_172655_ET-e467598985cfe05aa5c25952fcb403b13f760201";
 
 /// Maximum retry attempts for chat requests.
 const MAX_RETRIES: u32 = 3;
@@ -65,8 +65,12 @@ pub fn platform_for_ua(ua: &str) -> &'static str {
     }
 }
 
-pub fn sec_ch_ua_for_ua(_ua: &str) -> &'static str {
-    "\"Not(A:Brand\";v=\"99\", \"Google Chrome\";v=\"133\", \"Chromium\";v=\"133\""
+pub fn sec_ch_ua_for_ua(ua: &str) -> &'static str {
+    if ua.contains("Edg/") {
+        r#""Not A(Brand";v="8", "Chromium";v="133", "Microsoft Edge";v="133""#
+    } else {
+        r#""Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133""#
+    }
 }
 
 impl Default for ModelSession {
@@ -75,7 +79,8 @@ impl Default for ModelSession {
     }
 }
 
-/// Core Duck.ai HTTP client with VQD token chaining, cookie warming, and V8 challenge solver.
+/// Upstream Duck.ai client with session and concurrency management.
+#[derive(Clone)]
 pub struct DuckClient {
     http: reqwest::Client,
     status_http: reqwest::Client,
@@ -83,6 +88,7 @@ pub struct DuckClient {
     sessions: Arc<RwLock<HashMap<String, ModelSession>>>,
     vqd_pool: Arc<Mutex<Vec<String>>>,
     warmed: Arc<RwLock<HashSet<String>>>,
+    fe_version: Arc<RwLock<String>>,
     status_lock: Arc<Mutex<()>>,
     chat_lock: Arc<Mutex<()>>,
     last_status_call: Arc<Mutex<Option<tokio::time::Instant>>>,
@@ -124,6 +130,7 @@ impl DuckClient {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             vqd_pool: Arc::new(Mutex::new(Vec::new())),
             warmed: Arc::new(RwLock::new(HashSet::new())),
+            fe_version: Arc::new(RwLock::new(FE_VERSION.to_string())),
             status_lock: Arc::new(Mutex::new(())),
             chat_lock: Arc::new(Mutex::new(())),
             last_status_call: Arc::new(Mutex::new(None)),
@@ -171,7 +178,7 @@ impl DuckClient {
         None
     }
 
-    /// Warms up session cookies for a specific journey ID.
+    /// Warms up session cookies for a specific journey ID and refreshes frontend version.
     pub async fn warm(&self, journey_id: &str) {
         {
             let warmed = self.warmed.read().await;
@@ -185,8 +192,22 @@ impl DuckClient {
             return;
         }
 
-        // Fetch landing page once to initialize cookies if needed
-        let _ = self.http.get(&self.upstream_base_url).send().await;
+        // Fetch landing page once to dynamically extract current fe-version tag and sha
+        if let Ok(resp) = self.http.get(&self.upstream_base_url).send().await {
+            if let Ok(html) = resp.text().await {
+                let tag = html.split("data-version-tag=\"")
+                    .nth(1)
+                    .and_then(|s| s.split('"').next());
+                let sha = html.split("data-version-sha=\"")
+                    .nth(1)
+                    .and_then(|s| s.split('"').next());
+                if let (Some(t), Some(s)) = (tag, sha) {
+                    let dynamic_fe_version = format!("{}-{}", t, s);
+                    let mut fe_ver = self.fe_version.write().await;
+                    *fe_ver = dynamic_fe_version;
+                }
+            }
+        }
 
         warmed_lock.insert(journey_id.to_string());
     }

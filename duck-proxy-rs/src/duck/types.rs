@@ -61,7 +61,9 @@ pub struct DuckChatRequest {
     pub messages: Vec<DuckChatMessage>,
     pub can_use_tools: bool,
     pub reasoning_effort: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub can_use_approx_location: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub can_delegate_image_generation: Option<bool>,
     pub durable_stream: DurableStream,
 }

@@ -188,35 +188,10 @@ pub fn solve_challenge_sync(challenge_b64: &str, user_agent: Option<&str>) -> Re
     let mut parsed: serde_json::Value = serde_json::from_str(&json_str)
         .map_err(|e| format!("Failed to parse V8 JSON result: {}", e))?;
 
-    // Post-process client_hashes: ensure client_hashes[0] is current UA and all elements are b64_sha256 hashed
-    if let Some(client_hashes) = parsed.get_mut("client_hashes").and_then(|v| v.as_array_mut()) {
-        if !client_hashes.is_empty() {
-            client_hashes[0] = serde_json::Value::String(ua.to_string());
-        }
-        for item in client_hashes.iter_mut() {
-            if let Some(s) = item.as_str() {
-                *item = serde_json::Value::String(b64_sha256(s));
-            }
-        }
-    }
-
-    // Ensure meta contains required origin, stack, and duration fields
+    // If client_hashes is present and empty, ensure at least UA is present
     if let Some(obj) = parsed.as_object_mut() {
-        let meta = obj.entry("meta").or_insert(serde_json::json!({}));
-        if let Some(meta_obj) = meta.as_object_mut() {
-            if !meta_obj.contains_key("origin") {
-                meta_obj.insert("origin".to_string(), serde_json::json!("https://duck.ai"));
-            }
-            if !meta_obj.contains_key("stack") {
-                meta_obj.insert(
-                    "stack".to_string(),
-                    serde_json::json!("Error\nat l (https://duck.ai/dist/duckai-dist/entry.duckai.4a6753f9e3e9d2695cc0.js:2:1833590)\nat async https://duck.ai/dist/duckai-dist/entry.duckai.4a6753f9e3e9d2695cc0.js:2:1621312"),
-                );
-            }
-            if !meta_obj.contains_key("duration") {
-                let jitter = (chrono::Utc::now().timestamp_subsec_millis() as usize % 10) + 20;
-                meta_obj.insert("duration".to_string(), serde_json::json!(format!("{}", jitter)));
-            }
+        if !obj.contains_key("client_hashes") || obj["client_hashes"].as_array().map_or(true, |a| a.is_empty()) {
+            obj.insert("client_hashes".to_string(), serde_json::json!([b64_sha256(ua)]));
         }
     }
 
