@@ -741,12 +741,22 @@ pub async fn chat_completions(
 
     // Convert & normalize messages with full permissions & tool definitions
     let messages = if is_image_gen {
-        let prompt = req_messages
+        let raw_prompt = req_messages
             .iter()
             .rfind(|m| m.role == "user")
             .map(|m| m.content.as_ref().map(|c| c.to_text()).unwrap_or_default())
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "a beautiful artistic illustration".to_string());
+            .unwrap_or_else(|| "a beautiful illustration".to_string());
+        let clean_prompt = if let Some(idx) = raw_prompt.find('[') {
+            raw_prompt[..idx].trim().to_string()
+        } else {
+            raw_prompt.trim().to_string()
+        };
+        let prompt = if clean_prompt.is_empty() {
+            raw_prompt
+        } else {
+            clean_prompt
+        };
         vec![DuckChatMessage {
             role: "user".to_string(),
             content: prompt,
@@ -761,7 +771,12 @@ pub async fn chat_completions(
 
     tracing::info!("Duck.ai prompt (is_image_gen={}): count={}, first={}", is_image_gen, messages.len(), messages.first().map(|m| &m.content[..m.content.len().min(500)]).unwrap_or(""));
 
-    let fallback_chain = state.config.fallback_chain(&duck_model);
+    let fallback_chain = if is_image_gen {
+        // Image generation on Duck.ai only works with OpenAI models (gpt-5.6-luna, gpt-5.4-mini)
+        vec!["gpt-5.6-luna".to_string(), "gpt-5.4-mini".to_string()]
+    } else {
+        state.config.fallback_chain(&duck_model)
+    };
 
     // Send to Duck.ai with automatic fallback cascade
     let (resp, _final_model) = state

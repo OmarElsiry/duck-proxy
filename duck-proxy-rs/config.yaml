@@ -2,7 +2,7 @@ server:
   host: "0.0.0.0"
   port: 8080
 
-auto_fallback: true
+auto_fallback: false
 
 model_list:
   # Official Exact Model Identifiers
