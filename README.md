@@ -13,26 +13,46 @@ Connect it seamlessly to **OpenCode CLI, Cursor, VS Code (Continue / Cline / Roo
 
 ---
 
-## ✨ Key Features & Capabilities
+## 🚀 Quick Install & 1-Command Launch
 
-- 🤖 **Native AI Agent IDE Support**: Full multi-turn agent tool execution, file operations, diff editing, and bash execution compatibility for OpenCode, Cursor, and Cline.
-- 🎨 **Duck.ai Native `gpt-image 2.0`**: Generates high-resolution images with official OpenAI C2PA metadata directly inside OpenCode TUI / CLI and via `/v1/images/generations` with zero external fallbacks.
-- ⚡ **Zero-Config 1-Click Launch**: Instant startup on Windows, Linux, and macOS with background daemonization.
-- 🛡️ **Embedded V8 Anomaly Solver**: Integrated JavaScript engine (`deno_core`) automatically solves Duck.ai HTTP 418 challenges on the fly.
-- 🔄 **Automatic Session & Rate-Limit Resilience**: Automatic journey ID rotation and session cookie warming on upstream rate limits.
-- 📦 **Tool Synthesizer & Format Normalization**: Automatically extracts `<tool_call>`, JSON blocks, and code blocks, translating them into executable client tools (`bash`, `apply_patch`).
-- 🌊 **Strict OpenAI SSE Protocol**: Full streaming compliance with `@ai-sdk/openai-compatible` (role delta chunks, stop reason signaling, and UTF-8 multibyte boundary preservation).
-- 🧪 **Comprehensive 40-Scenario Test Suite**: Built-in test harness verifying file ops, surgical edits, context pruning, tools, streaming, and subagent concurrency.
+### 🐧 Linux & 🍎 macOS (Terminal)
+```bash
+# 1. Install Rust compiler (if not already installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
----
+# 2. Clone repository & launch in 1 command
+git clone https://github.com/OmarElsiry/duck-proxy.git
+cd duck-proxy
+./duck
+```
 
-## ⚡ 1-Click Quick Start
+### 🪟 Windows (Command Prompt / CMD)
+```cmd
+:: 1. Install Rust via Winget (if not already installed)
+winget install Rustlang.Rustup
 
-| Operating System | How to Launch | What Happens Automatically |
-| :--- | :--- | :--- |
-| **🪟 Windows (Command Prompt / Double Click)** | Double-click `duck.bat` or run: <br>`duck.bat` | Detects/installs Rust, compiles binary, starts background process, opens web dashboard at `http://localhost:8080/app`. |
-| **🪟 Windows (PowerShell)** | Run in PowerShell: <br>`.\duck.ps1` | Colored status check, background daemon launch, browser auto-start, healthcheck probe. |
-| **🐧 Linux & 🍎 macOS** | Run in Terminal: <br>`./duck` | Compiles release binary, starts background daemon, launches browser, prints live status card. |
+:: 2. Clone repository & launch
+git clone https://github.com/OmarElsiry/duck-proxy.git
+cd duck-proxy
+duck.bat
+```
+
+### 🪟 Windows (PowerShell)
+```powershell
+# 1. Install Rust via Winget (if not already installed)
+winget install Rustlang.Rustup
+
+# 2. Clone repository & launch
+git clone https://github.com/OmarElsiry/duck-proxy.git
+cd duck-proxy
+.\duck.ps1
+```
+
+> **⚡ What happens automatically:**
+> - Verifies/compiles the optimized release binary in pure Rust.
+> - Starts the background daemon on `http://127.0.0.1:8080`.
+> - Launches your default browser to the interactive dashboard (`http://localhost:8080/app`).
+> - Displays an instant status card with model catalog and quick-test curl commands.
 
 ---
 

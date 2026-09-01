@@ -90,12 +90,16 @@ pub fn default_model_list() -> Vec<ModelMapping> {
         ModelMapping::new("image-generation", "image-generation"),
         ModelMapping::new("gpt5", "gpt-5.6-luna"),
         ModelMapping::new("gpt-5-6", "gpt-5.6-luna"),
-        ModelMapping::new("gpt-5", "gpt-5.6-luna"),
         ModelMapping::new("gpt5_mini", "gpt-5.4-mini"),
         ModelMapping::new("gemma", "tinfoil/gemma4-31b"),
         ModelMapping::new("claude", "claude-haiku-4-5"),
         ModelMapping::new("mistral", "mistral-small-2603"),
         ModelMapping::new("image", "image-generation"),
+        ModelMapping::new("gpt-image-2.0", "image-generation"),
+        ModelMapping::new("gpt-image-2", "image-generation"),
+        ModelMapping::new("gpt-image", "image-generation"),
+        ModelMapping::new("dall-e-3", "image-generation"),
+        ModelMapping::new("dall-e-2", "image-generation"),
     ]
 }
 

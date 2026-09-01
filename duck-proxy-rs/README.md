@@ -21,24 +21,52 @@ A high-performance, asynchronous, zero-lag, OpenAI-compatible proxy server for D
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Install & 1-Command Launch
 
-### 1. Prerequisites
-- **Rust toolchain** (1.75 or later):
-  ```bash
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-  ```
-
-### 2. Build & Launch
+### 🐧 Linux & 🍎 macOS (Terminal)
 ```bash
-# Navigate to the project directory
-cd duck-proxy-rs
+# 1. Install Rust compiler (if not already installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Run in release mode
-cargo run --release
+# 2. Clone repository & launch in 1 command
+git clone https://github.com/OmarElsiry/duck-proxy.git
+cd duck-proxy
+./duck
 ```
 
-The server will start on `http://127.0.0.1:8080` (or `0.0.0.0:8080`).
+### 🪟 Windows (Command Prompt / CMD)
+```cmd
+:: 1. Install Rust via Winget (if not already installed)
+winget install Rustlang.Rustup
+
+:: 2. Clone repository & launch
+git clone https://github.com/OmarElsiry/duck-proxy.git
+cd duck-proxy
+duck.bat
+```
+
+### 🪟 Windows (PowerShell)
+```powershell
+# 1. Install Rust via Winget (if not already installed)
+winget install Rustlang.Rustup
+
+# 2. Clone repository & launch
+git clone https://github.com/OmarElsiry/duck-proxy.git
+cd duck-proxy
+.\duck.ps1
+```
+
+> **⚡ What happens automatically:**
+> - Verifies/compiles the optimized release binary in pure Rust.
+> - Starts the background daemon on `http://127.0.0.1:8080`.
+> - Launches your default browser to the interactive dashboard (`http://localhost:8080/app`).
+> - Displays an instant status card with model catalog and quick-test curl commands.
+
+### Manual / Developer Build
+```bash
+cd duck-proxy-rs
+cargo run --release
+```
 
 ---
 

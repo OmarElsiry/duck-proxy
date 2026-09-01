@@ -34,3 +34,9 @@ model_list:
     duck_model: tinfoil/gemma4-31b
   - model_name: image
     duck_model: image-generation
+  - model_name: gpt-image-2.0
+    duck_model: image-generation
+  - model_name: gpt-image
+    duck_model: image-generation
+  - model_name: dall-e-3
+    duck_model: image-generation

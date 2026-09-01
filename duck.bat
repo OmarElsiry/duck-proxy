@@ -65,7 +65,7 @@ echo    • claude-haiku-4-5   (claude)     → Anthropic Claude Haiku 4.5 (Fast
 echo    • mistral-small-2603 (mistral)    → Mistral Small 2603 (Logic & Math)
 echo    • tinfoil/gemma4-31b (gemma)      → Google / Tinfoil Gemma 4 31B (Privacy)
 echo    • gpt-5.4-mini       (gpt5_mini)  → OpenAI GPT-5.4 Mini (Lightweight)
-echo    • image-generation   (image)      → Diffusion Image Generator
+echo    • image-generation   (image, gpt-image-2.0) → OpenAI gpt-image 2.0 (Native Generator)
 echo.
 echo  ────────────────────────────────────────────────────────────────
 echo   QUICK USAGE:

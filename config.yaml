@@ -15,3 +15,9 @@ model_list:
     litellm_params: { model: duck/gpt_oss }
   - model_name: image
     litellm_params: { model: duck/image-generation }
+  - model_name: gpt-image-2.0
+    litellm_params: { model: duck/image-generation }
+  - model_name: gpt-image
+    litellm_params: { model: duck/image-generation }
+  - model_name: dall-e-3
+    litellm_params: { model: duck/image-generation }
