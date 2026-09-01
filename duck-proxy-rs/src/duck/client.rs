@@ -123,6 +123,7 @@ impl DuckClient {
             .expect("Failed to build HTTP client");
 
         let status_http = reqwest::Client::builder()
+            .default_headers(Self::browser_headers())
             .cookie_store(true)
             .build()
             .expect("Failed to build status HTTP client");
@@ -344,6 +345,12 @@ impl DuckClient {
                 return Ok(raw_challenge);
             }
 
+            if attempt < 1 {
+                self.force_rewarm(journey_id).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                continue;
+            }
+
             return Err(AppError::bad_gateway("No x-vqd-hash-1 challenge returned in status response"));
         }
 
@@ -373,9 +380,10 @@ impl DuckClient {
             .map_err(|e| AppError::bad_gateway(format!("V8 Challenge solver error: {}", e)))
     }
 
-    /// Stores a raw chained VQD challenge (stateless mode leaves each turn fresh).
-    async fn store_chained_challenge(&self, _model: &str, _raw_challenge: String) {
-        // Stateless mode avoids ERR_CONVERSATION_LIMIT on IDE clients that send full history
+    /// Stores a raw chained VQD challenge for subsequent requests.
+    async fn store_chained_challenge(&self, _model: &str, raw_challenge: String) {
+        let mut pool = self.vqd_pool.lock().await;
+        pool.push(raw_challenge);
     }
 
     /// Resets session journey ID and challenge for a given model with User-Agent rotation.

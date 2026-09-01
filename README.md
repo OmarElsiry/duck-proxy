@@ -9,13 +9,14 @@
 
 **Duck Proxy** is a high-performance, asynchronous local server written in pure Rust that converts Duck.ai into a standard **OpenAI API endpoint (`http://localhost:8080/v1`)**.
 
-Connect it seamlessly to **OpenCode CLI, Cursor, VS Code (Continue / Cline / Roo Code), ZCode, Aider, Zed, Windsurf, Neovim**, or any Python/Node.js application to access **GPT-5.6 Luna, Claude Haiku 4.5, Mistral Small 2603, Google Gemma 4 31B**, and **Diffusion Image Generation** for free with zero API subscriptions.
+Connect it seamlessly to **OpenCode CLI, Cursor, VS Code (Continue / Cline / Roo Code), ZCode, Aider, Zed, Windsurf, Neovim**, or any Python/Node.js application to access **GPT-5.6 Luna, Claude Haiku 4.5, Mistral Small 2603, Google Gemma 4 31B**, and native **`gpt-image 2.0` Image Generation** for free with zero API subscriptions.
 
 ---
 
 ## ✨ Key Features & Capabilities
 
 - 🤖 **Native AI Agent IDE Support**: Full multi-turn agent tool execution, file operations, diff editing, and bash execution compatibility for OpenCode, Cursor, and Cline.
+- 🎨 **Duck.ai Native `gpt-image 2.0`**: Generates high-resolution images with official OpenAI C2PA metadata directly inside OpenCode TUI / CLI and via `/v1/images/generations` with zero external fallbacks.
 - ⚡ **Zero-Config 1-Click Launch**: Instant startup on Windows, Linux, and macOS with background daemonization.
 - 🛡️ **Embedded V8 Anomaly Solver**: Integrated JavaScript engine (`deno_core`) automatically solves Duck.ai HTTP 418 challenges on the fly.
 - 🔄 **Automatic Session & Rate-Limit Resilience**: Automatic journey ID rotation and session cookie warming on upstream rate limits.
@@ -41,12 +42,12 @@ Every model has an **exact official identifier** as well as a **convenient short
 
 | Model ID (Specific) | Short Alias | Upstream Engine | Creator | Context Window | Best Use Cases & Strengths |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `gpt-5.6-luna` | `gpt5` | `gpt-5.6-luna` | OpenAI | 128k / 200k | 🥇 **Primary Coding:** Complex system architecture, deep reasoning, multi-file refactoring |
+| `gpt-5.6-luna` | `gpt5` | `gpt-5.6-luna` | OpenAI | 128k / 200k | 🥇 **Primary Coding & Image Gen:** Complex system architecture, multi-file refactoring, native `gpt-image 2.0` |
 | `claude-haiku-4-5` | `claude` | `claude-haiku-4-5` | Anthropic | 128k / 200k | ⚡ **Fast Code Review:** Interactive editing, explaining bugs, writing unit tests |
 | `mistral-small-2603` | `mistral` | `mistral-small-2603` | Mistral AI | 64k / 128k | 🚀 **Speed & Logic:** Direct mathematical logic, algorithms, concise scripts |
 | `tinfoil/gemma4-31b` | `gemma` | `tinfoil/gemma4-31b` | Google / Tinfoil | 64k / 128k | 🔒 **Privacy Focused:** High-parameter open model with zero tracking guarantees |
 | `gpt-5.4-mini` | `gpt5_mini` | `gpt-5.4-mini` | OpenAI | 64k / 128k | ⏱️ **Lightweight:** Fast syntax checks, quick Q&A, drafting git commit messages |
-| `image-generation` | `image` | `image-generation` | Duck.ai Diffusion | — | 🎨 **Image Assets:** Generates logos, mockups, and illustrations via `/v1/images/generations` |
+| `image-generation` | `image` | `gpt-image 2.0` | OpenAI | — | 🎨 **Image Assets:** Generates high-res image assets via `/v1/images/generations` or chat prompts |
 
 ---
 
@@ -182,7 +183,15 @@ for chunk in stream:
 
 ---
 
-### 8. Image Generation via API
+### 8. Native `gpt-image 2.0` Image Generation
+
+#### In OpenCode CLI / TUI (Auto-Save to Workspace)
+Run image generation directly in your terminal; OpenCode decodes the base64 stream, writes the image to disk, and displays the full resolved path:
+```bash
+opencode run -m duckproxy/gpt-5.6-luna --auto "gen img of a knight in shining armor"
+```
+
+#### Via OpenAI Compatible REST API
 ```bash
 curl http://localhost:8080/v1/images/generations \
   -H "Content-Type: application/json" \

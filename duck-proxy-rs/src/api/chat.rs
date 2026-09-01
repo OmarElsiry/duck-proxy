@@ -652,6 +652,9 @@ pub fn is_image_generation_intent(model: &str, raw_model: &str, messages: &[Chat
             "create image",
             "create an image",
             "create images",
+            "generate a ",
+            "generate an ",
+            "generate me ",
             "draw a ",
             "draw an ",
             "draw me ",
@@ -672,10 +675,13 @@ pub fn is_image_generation_intent(model: &str, raw_model: &str, messages: &[Chat
             "render image",
             "picture of a",
             "picture of an",
+            "picture of ",
             "photo of a",
             "photo of an",
+            "photo of ",
             "image of a",
             "image of an",
+            "image of ",
         ];
         for p in &phrases {
             if text.contains(p) {
@@ -944,8 +950,10 @@ async fn handle_text_streaming(
 
 /// Derives a clean, descriptive image filename from the user's prompt (e.g. "knight_icon.png").
 pub fn derive_image_filename(prompt: &str) -> String {
-    // Strip bracketed instructions like [caveman ...] or [ENVIRONMENT ...]
-    let base_prompt = if let Some(idx) = prompt.find('[') {
+    // Strip known system tags like [caveman ...] or [ENVIRONMENT ...]
+    let base_prompt = if let Some(idx) = prompt.find("[caveman") {
+        &prompt[..idx]
+    } else if let Some(idx) = prompt.find("[ENVIRONMENT") {
         &prompt[..idx]
     } else {
         prompt

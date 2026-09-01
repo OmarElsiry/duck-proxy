@@ -12,11 +12,12 @@ A high-performance, asynchronous, zero-lag, OpenAI-compatible proxy server for D
 ## ⚡ Highlights
 
 - **Full OpenAI API Compatibility**: Drop-in replacement for OpenAI endpoints (`/v1/models`, `/v1/chat/completions`, `/v1/images/generations`).
+- **Native Duck.ai `gpt-image 2.0`**: Generates high-resolution images via upstream OpenAI `gpt-image 2.0` engine directly inside OpenCode TUI / CLI and `/v1/images/generations` with zero external fallbacks.
 - **Zero-Lag Asynchronous Streaming**: Native `axum` + `tokio` Server-Sent Events (SSE) streaming engine.
 - **Dedicated V8 Anti-Bot Solver**: Single-threaded `deno_core` worker actor with full browser DOM/navigator stubs to solve `x-vqd-hash-1` challenges without blocking asynchronous tasks.
 - **Ephemeral RSA Cryptography**: Automatic 2048-bit RSA-OAEP-256 keypair generation with RFC 7517 JWK formatting.
 - **Resilient Token Chaining**: In-memory VQD token caching with exponential backoff on HTTP 429 rate limits.
-- **Broad AI Client Support**: Works out of the box with Python SDK, Node.js SDK, Open WebUI, LibreChat, NextChat, Cursor, Continue.dev, LangChain, and LlamaIndex.
+- **Broad AI Client Support**: Works out of the box with OpenCode CLI / TUI, Python SDK, Node.js SDK, Open WebUI, LibreChat, NextChat, Cursor, Continue.dev, LangChain, and LlamaIndex.
 
 ---
 
@@ -125,7 +126,14 @@ async function main() {
 main();
 ```
 
-### 🖼️ Image Generation & Saving to File
+### 🖼️ Image Generation (`gpt-image 2.0`)
+
+#### In OpenCode CLI / TUI (Autonomous Write to Disk)
+```bash
+opencode run -m duckproxy/gpt-5.6-luna --auto "gen img of a knight in shining armor"
+```
+
+#### Via Python SDK
 ```python
 import base64
 from openai import OpenAI
