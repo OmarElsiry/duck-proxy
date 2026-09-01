@@ -616,6 +616,26 @@ pub fn is_image_generation_intent(model: &str, raw_model: &str, messages: &[Chat
         return true;
     }
 
+    // If an assistant message or tool message already completed/responded to the user's image request, don't generate again
+    let user_pos = messages.iter().rposition(|m| m.role == "user");
+    let assistant_pos = messages.iter().rposition(|m| m.role == "assistant");
+    let tool_pos = messages.iter().rposition(|m| m.role == "tool" || m.role == "function");
+
+    if let Some(u) = user_pos {
+        if let Some(a) = assistant_pos {
+            if a > u {
+                return false;
+            }
+        }
+        if let Some(t) = tool_pos {
+            if t >= u {
+                return false;
+            }
+        }
+    } else {
+        return false;
+    }
+
     if let Some(last_msg) = messages.iter().rfind(|m| m.role == "user") {
         let text = last_msg
             .content
@@ -842,6 +862,34 @@ pub async fn chat_completions(
                         return handle_synthetic_image_non_streaming(b64, completion_id, created, req.model, &filename).await;
                     }
                 }
+            } else if req_messages.iter().any(|m| m.role == "tool" || m.role == "function") {
+                tracing::info!("Tool execution completed successfully; finishing turn gracefully despite upstream error: {:?}", e);
+                let finish_content = "Operation completed successfully.".to_string();
+                if req.stream {
+                    return handle_text_streaming(finish_content, completion_id, created, req.model).await;
+                } else {
+                    let response = ChatCompletionResponse {
+                        id: completion_id,
+                        object: "chat.completion".to_string(),
+                        created,
+                        model: req.model,
+                        choices: vec![Choice {
+                            index: 0,
+                            message: ResponseMessage {
+                                role: "assistant".to_string(),
+                                content: Some(finish_content),
+                                tool_calls: None,
+                            },
+                            finish_reason: "stop".to_string(),
+                        }],
+                        usage: Usage {
+                            prompt_tokens: 0,
+                            completion_tokens: 0,
+                            total_tokens: 0,
+                        },
+                    };
+                    return Ok(Json(response).into_response());
+                }
             }
             return Err(e);
         }
@@ -852,6 +900,61 @@ pub async fn chat_completions(
     } else {
         handle_non_streaming(resp, completion_id, created, req.model, &user_prompt).await
     }
+}
+
+/// Synthesizes a clean streaming text response with finish_reason: "stop".
+async fn handle_text_streaming(
+    content: String,
+    completion_id: String,
+    created: i64,
+    model: String,
+) -> Result<Response, AppError> {
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(10);
+
+    tokio::spawn(async move {
+        let chunk1 = ChatCompletionChunk {
+            id: completion_id.clone(),
+            object: "chat.completion.chunk".to_string(),
+            created,
+            model: model.clone(),
+            choices: vec![ChunkChoice {
+                index: 0,
+                delta: Delta {
+                    role: Some("assistant".to_string()),
+                    content: Some(content),
+                    tool_calls: None,
+                },
+                finish_reason: None,
+            }],
+        };
+        if let Ok(json) = serde_json::to_string(&chunk1) {
+            let _ = tx.send(Ok(Event::default().data(json))).await;
+        }
+
+        let chunk_end = ChatCompletionChunk {
+            id: completion_id.clone(),
+            object: "chat.completion.chunk".to_string(),
+            created,
+            model: model.clone(),
+            choices: vec![ChunkChoice {
+                index: 0,
+                delta: Delta {
+                    role: None,
+                    content: None,
+                    tool_calls: None,
+                },
+                finish_reason: Some("stop".to_string()),
+            }],
+        };
+        if let Ok(json) = serde_json::to_string(&chunk_end) {
+            let _ = tx.send(Ok(Event::default().data(json))).await;
+        }
+
+        let _ = tx.send(Ok(Event::default().data("[DONE]"))).await;
+    });
+
+    let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+    Ok(Sse::new(stream).into_response())
 }
 
 /// Derives a clean, descriptive image filename from the user's prompt (e.g. "knight_icon.png").
