@@ -7,7 +7,7 @@
 [![API](https://img.shields.io/badge/API-OpenAI%20v1%20Compatible-success.svg)]()
 [![OpenCode](https://img.shields.io/badge/OpenCode-Agent%20Ready-purple.svg)]()
 
-**Duck Proxy** is a high-performance, asynchronous local server written in pure Rust that converts Duck.ai into a standard **OpenAI API endpoint (`http://localhost:8080/v1`)**.
+**Duck Proxy** is a high-performance, asynchronous local server written in pure Rust that converts Duck.ai into a standard **OpenAI API endpoint (`http://localhost:18080/v1`)**.
 
 Connect it seamlessly to **OpenCode CLI, Cursor, VS Code (Continue / Cline / Roo Code), ZCode, Aider, Zed, Windsurf, Neovim**, or any Python/Node.js application to access **GPT-5.6 Luna, Claude Haiku 4.5, Mistral Small 2603, Google Gemma 4 31B**, and native **`gpt-image 2.0` Image Generation** for free with zero API subscriptions.
 
@@ -50,8 +50,8 @@ cd duck-proxy
 
 > **⚡ What happens automatically:**
 > - Verifies/compiles the optimized release binary in pure Rust.
-> - Starts the background daemon on `http://127.0.0.1:8080`.
-> - Launches your default browser to the interactive dashboard (`http://localhost:8080/app`).
+> - Starts the background daemon on `http://127.0.0.1:18080`.
+> - Launches your default browser to the interactive dashboard (`http://localhost:18080/app`).
 > - Displays an instant status card with model catalog and quick-test curl commands.
 
 ---
@@ -94,7 +94,7 @@ Configure OpenCode in `~/.opencode/config.json` (or `~/.config/opencode/config.j
   "providers": {
     "duckproxy": {
       "type": "openai-compatible",
-      "baseURL": "http://localhost:8080/v1",
+      "baseURL": "http://localhost:18080/v1",
       "apiKey": "duck-proxy",
       "models": [
         "gpt-5.6-luna",
@@ -123,7 +123,7 @@ opencode
 2. Under **OpenAI API Key**, enter `duck-proxy`.
 3. Enable **Override OpenAI Base URL** and enter:
    ```text
-   http://localhost:8080/v1
+   http://localhost:18080/v1
    ```
 4. Add models: `gpt-5.6-luna`, `claude-haiku-4-5`, `mistral-small-2603`.
 
@@ -139,14 +139,14 @@ Add this block to your `~/.continue/config.json`:
       "title": "Duck GPT-5.6 Luna",
       "provider": "openai",
       "model": "gpt-5.6-luna",
-      "apiBase": "http://localhost:8080/v1",
+      "apiBase": "http://localhost:18080/v1",
       "apiKey": "duck-proxy"
     },
     {
       "title": "Duck Claude Haiku 4.5",
       "provider": "openai",
       "model": "claude-haiku-4-5",
-      "apiBase": "http://localhost:8080/v1",
+      "apiBase": "http://localhost:18080/v1",
       "apiKey": "duck-proxy"
     }
   ]
@@ -157,7 +157,7 @@ Add this block to your `~/.continue/config.json`:
 
 ### 4. VS Code — Cline & Roo Code
 1. Open Cline Settings &rarr; **API Provider**: `OpenAI Compatible`.
-2. **Base URL**: `http://localhost:8080/v1`
+2. **Base URL**: `http://localhost:18080/v1`
 3. **API Key**: `duck-proxy`
 4. **Model ID**: `gpt-5.6-luna` (or `claude-haiku-4-5`)
 5. Enable **Supports Streaming**.
@@ -166,7 +166,7 @@ Add this block to your `~/.continue/config.json`:
 
 ### 5. Aider CLI (Terminal Pair Programming)
 ```bash
-export OPENAI_API_BASE="http://localhost:8080/v1"
+export OPENAI_API_BASE="http://localhost:18080/v1"
 export OPENAI_API_KEY="duck-proxy"
 
 # Pair program with GPT-5.6 Luna
@@ -182,7 +182,7 @@ Add to `~/.config/zed/settings.json`:
 {
   "language_models": {
     "openai": {
-      "api_url": "http://localhost:8080/v1",
+      "api_url": "http://localhost:18080/v1",
       "available_models": [
         { "name": "gpt-5.6-luna", "display_name": "GPT-5.6 Luna", "max_tokens": 8192 },
         { "name": "claude-haiku-4-5", "display_name": "Claude Haiku 4.5", "max_tokens": 8192 }
@@ -199,7 +199,7 @@ Add to `~/.config/zed/settings.json`:
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:8080/v1",
+    base_url="http://localhost:18080/v1",
     api_key="duck-proxy"
 )
 
@@ -226,7 +226,7 @@ opencode run -m duckproxy/gpt-5.6-luna --auto "gen img of a knight in shining ar
 
 #### Via OpenAI Compatible REST API
 ```bash
-curl http://localhost:8080/v1/images/generations \
+curl http://localhost:18080/v1/images/generations \
   -H "Content-Type: application/json" \
   -d '{"prompt": "minimalist glowing cyber duck logo, geometric art", "response_format": "b64_json"}'
 ```

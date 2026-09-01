@@ -9,8 +9,8 @@ setlocal enabledelayedexpansion
 set "REPO_DIR=%~dp0"
 set "BIN_PATH=%REPO_DIR%duck-proxy-rs\target\release\duck-proxy-rs.exe"
 set "CONFIG_PATH=%REPO_DIR%duck-proxy-rs\config.yaml"
-set "APP_URL=http://localhost:8080/app"
-set "PORT=8080"
+set "APP_URL=http://localhost:18080/app"
+set "PORT=18080"
 
 REM 1. Check if binary exists, if not build it
 if not exist "%BIN_PATH%" (
@@ -34,7 +34,7 @@ if not exist "%BIN_PATH%" (
     )
 )
 
-REM 2. Check if port 8080 is already active
+REM 2. Check if port 18080 is already active
 netstat -ano | findstr ":%PORT% " | findstr "LISTENING" >nul 2>nul
 if %errorlevel% equ 0 (
     echo [STATUS] Duck Proxy is already active on http://127.0.0.1:%PORT%
@@ -53,10 +53,10 @@ echo  ┌───────────────────────�
 echo  │  DUCK // PROXY — Local AI Gateway (OpenAI Compatible)        │
 echo  └──────────────────────────────────────────────────────────────┘
 echo.
-echo   ● Base URL:    http://localhost:8080/v1
+echo   ● Base URL:    http://localhost:18080/v1
 echo   ● API Key:     duck-proxy  (or any arbitrary key)
-echo   ● Dashboard:   http://localhost:8080/app
-echo   ● Status:      ONLINE  (Port 8080)
+echo   ● Dashboard:   http://localhost:18080/app
+echo   ● Status:      ONLINE  (Port 18080)
 echo.
 echo  ────────────────────────────────────────────────────────────────
 echo   EXACT MODELS CATALOG:
@@ -69,8 +69,8 @@ echo    • image-generation   (image, gpt-image-2.0) → OpenAI gpt-image 2.0 (
 echo.
 echo  ────────────────────────────────────────────────────────────────
 echo   QUICK USAGE:
-echo    • Test API:   curl http://localhost:8080/v1/models
-echo    • Quick Chat: curl http://localhost:8080/v1/chat/completions ^
+echo    • Test API:   curl http://localhost:18080/v1/models
+echo    • Quick Chat: curl http://localhost:18080/v1/chat/completions ^
 echo                    -H "Content-Type: application/json" ^
 echo                    -d "{\"model\":\"gpt-5.6-luna\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}"
 echo    • IDE Setup:  See full Cursor, VS Code, ZCode, Zed at /app

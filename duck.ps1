@@ -8,8 +8,8 @@ $ErrorActionPreference = "Stop"
 $RepoDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BinPath = Join-Path $RepoDir "duck-proxy-rs\target\release\duck-proxy-rs.exe"
 $ConfigPath = Join-Path $RepoDir "duck-proxy-rs\config.yaml"
-$AppUrl = "http://localhost:8080/app"
-$Port = 8080
+$AppUrl = "http://localhost:18080/app"
+$Port = 18080
 
 # 1. Check if binary exists; if not, check Rust / Cargo & Build
 if (-not (Test-Path $BinPath)) {
@@ -93,10 +93,10 @@ Write-Host @"
  │  DUCK // PROXY — Local AI Gateway (OpenAI Compatible)        │
  └──────────────────────────────────────────────────────────────┘
 
-  ● Base URL:    http://localhost:8080/v1
+  ● Base URL:    http://localhost:18080/v1
   ● API Key:     duck-proxy  (or any arbitrary key)
-  ● Dashboard:   http://localhost:8080/app
-  ● Status:      ONLINE  (Port 8080)
+  ● Dashboard:   http://localhost:18080/app
+  ● Status:      ONLINE  (Port 18080)
 
  ────────────────────────────────────────────────────────────────
   EXACT MODELS CATALOG:
@@ -109,8 +109,8 @@ Write-Host @"
 
  ────────────────────────────────────────────────────────────────
   QUICK USAGE:
-   • Test API:   curl http://localhost:8080/v1/models
-   • Quick Chat: curl http://localhost:8080/v1/chat/completions `
+   • Test API:   curl http://localhost:18080/v1/models
+   • Quick Chat: curl http://localhost:18080/v1/chat/completions `
                    -H "Content-Type: application/json" `
                    -d '{"model":"gpt-5.6-luna","messages":[{"role":"user","content":"Hi"}]}'
    • IDE Setup:  See full Cursor, VS Code, ZCode, Zed at /app

@@ -8,8 +8,8 @@ set -e
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_PATH="$REPO_DIR/duck-proxy-rs/target/release/duck-proxy-rs"
 CONFIG_PATH="$REPO_DIR/duck-proxy-rs/config.yaml"
-APP_URL="http://localhost:8080/app"
-PORT=8080
+APP_URL="http://localhost:18080/app"
+PORT=18080
 
 # Build release binary if missing
 if [ ! -f "$BIN_PATH" ]; then
@@ -17,7 +17,7 @@ if [ ! -f "$BIN_PATH" ]; then
     cargo build --release --manifest-path "$REPO_DIR/duck-proxy-rs/Cargo.toml"
 fi
 
-# Check if proxy is already running on port 8080
+# Check if proxy is already running on port 18080
 if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1 || nc -z 127.0.0.1 $PORT 2>/dev/null; then
     echo "🟢 Duck Proxy is already active on http://127.0.0.1:$PORT"
 else
@@ -49,29 +49,29 @@ cat << "EOF"
  │  DUCK // PROXY — Minimalist API Command Center               │
  └──────────────────────────────────────────────────────────────┘
 
-  ● Web App URL:      http://localhost:8080/app
-  ● OpenAI Endpoint:  http://localhost:8080/v1
-  ● Status:           ONLINE (Port 8080)
+  ● Web App URL:      http://localhost:18080/app
+  ● OpenAI Endpoint:  http://localhost:18080/v1
+  ● Status:           ONLINE (Port 18080)
 
  ────────────────────────────────────────────────────────────────
   AVAILABLE COMMANDS & ENDPOINTS:
  ────────────────────────────────────────────────────────────────
 
   [1] List Models:
-      curl http://localhost:8080/v1/models
+      curl http://localhost:18080/v1/models
 
   [2] Chat Completion (GPT-5 / Claude / Mistral):
-      curl http://localhost:8080/v1/chat/completions \
+      curl http://localhost:18080/v1/chat/completions \
         -H "Content-Type: application/json" \
         -d '{"model": "gpt5", "messages": [{"role": "user", "content": "Hello!"}]}'
 
   [3] Real-time Streaming (Typewriter SSE):
-      curl -N http://localhost:8080/v1/chat/completions \
+      curl -N http://localhost:18080/v1/chat/completions \
         -H "Content-Type: application/json" \
         -d '{"model": "claude", "stream": true, "messages": [{"role": "user", "content": "Write 2 lines."}]}'
 
   [4] Image Generation (Base64 extraction):
-      curl http://localhost:8080/v1/images/generations \
+      curl http://localhost:18080/v1/images/generations \
         -H "Content-Type: application/json" \
         -d '{"prompt": "minimalist cyber duck logo", "response_format": "b64_json"}'
 

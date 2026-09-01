@@ -34,6 +34,6 @@ Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Se
 Start-ScheduledTask -TaskName $TaskName
 
 Write-Host "✅ Duck Proxy service installed and started!" -ForegroundColor Green
-Write-Host "● Port:       http://localhost:8080/v1" -ForegroundColor White
-Write-Host "● Dashboard:  http://localhost:8080/app" -ForegroundColor White
+Write-Host "● Port:       http://localhost:18080/v1" -ForegroundColor White
+Write-Host "● Dashboard:  http://localhost:18080/app" -ForegroundColor White
 Write-Host "● Autostart:  Runs automatically on Windows startup" -ForegroundColor White

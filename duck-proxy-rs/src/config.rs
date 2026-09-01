@@ -29,7 +29,7 @@ fn default_host() -> String {
 }
 
 fn default_port() -> u16 {
-    8080
+    18080
 }
 
 impl Default for ServerConfig {
@@ -321,9 +321,9 @@ mod tests {
     fn test_default_config() {
         let cfg = Config::default();
         assert_eq!(cfg.server.host, "0.0.0.0");
-        assert_eq!(cfg.server.port, 8080);
+        assert_eq!(cfg.server.port, 18080);
         assert_eq!(cfg.upstream_base_url, "https://duck.ai");
-        assert_eq!(cfg.model_list.len(), 15);
+        assert_eq!(cfg.model_list.len(), 19);
 
         assert_eq!(
             cfg.resolve_duck_model("gpt-5.6-luna"),
@@ -383,7 +383,7 @@ server:
         assert_eq!(cfg.server.host, "0.0.0.0");
         assert_eq!(cfg.server.port, 3000);
         assert_eq!(cfg.upstream_base_url, "https://duck.ai");
-        assert_eq!(cfg.model_list.len(), 15);
+        assert_eq!(cfg.model_list.len(), 19);
     }
 
     #[test]
@@ -443,7 +443,7 @@ server:
 
         // load_or_default with missing path falls back to default
         let fallback_cfg = Config::load_or_default(Some(missing_path));
-        assert_eq!(fallback_cfg.server.port, 8080);
+        assert_eq!(fallback_cfg.server.port, 18080);
     }
 
     #[test]

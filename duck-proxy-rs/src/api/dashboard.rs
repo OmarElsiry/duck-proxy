@@ -617,7 +617,7 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
         </a>
         <div class="status-pill">
           <span class="status-dot"></span>
-          <span id="status-text">ONLINE :8080</span>
+          <span id="status-text">ONLINE :18080</span>
         </div>
       </div>
       <div class="nav-actions">
@@ -633,8 +633,8 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
     <div class="metrics-bar">
       <div class="metric-card">
         <div class="metric-label">Status & Port</div>
-        <div class="metric-value">8080 <span style="font-size:14px;color:var(--green)">● OK</span></div>
-        <div class="metric-subtext">http://127.0.0.1:8080/v1</div>
+        <div class="metric-value">18080 <span style="font-size:14px;color:var(--green)">● OK</span></div>
+        <div class="metric-subtext">http://127.0.0.1:18080/v1</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Active Models</div>
@@ -679,7 +679,7 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
               Queries the proxy for all available LLM models, routing aliases, and ownership flags.
             </p>
             <div class="form-label">Target URL</div>
-            <input type="text" class="form-input" id="models-url" value="http://localhost:8080/v1/models" readonly>
+            <input type="text" class="form-input" id="models-url" value="http://localhost:18080/v1/models" readonly>
           </div>
           <div>
             <div class="output-pane">
@@ -888,12 +888,12 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
         <div class="ide-desc-box">
           1. Open <strong>Cursor Settings</strong> (<code>Ctrl+Shift+J</code> / <code>Cmd+Shift+J</code>) &rarr; <strong>Models</strong>.<br>
           2. Under <strong>OpenAI API Key</strong>, type <code>duck-proxy</code>.<br>
-          3. Click <strong>Override OpenAI Base URL</strong> and enter <code>http://localhost:8080/v1</code>.<br>
+          3. Click <strong>Override OpenAI Base URL</strong> and enter <code>http://localhost:18080/v1</code>.<br>
           4. Add models: <code>gpt5</code>, <code>claude</code>, <code>mistral</code>.
         </div>
         <div class="code-block">
           <button class="copy-btn-float" onclick="copySnippet('cursor-snip')">Copy Endpoint</button>
-          <pre id="cursor-snip">Base URL: http://localhost:8080/v1
+          <pre id="cursor-snip">Base URL: http://localhost:18080/v1
 API Key:  duck-proxy
 Models:   gpt5, claude, mistral</pre>
         </div>
@@ -912,14 +912,14 @@ Models:   gpt5, claude, mistral</pre>
       "title": "Duck GPT-5 Luna",
       "provider": "openai",
       "model": "gpt5",
-      "apiBase": "http://localhost:8080/v1",
+      "apiBase": "http://localhost:18080/v1",
       "apiKey": "duck-proxy"
     },
     {
       "title": "Duck Claude Haiku",
       "provider": "openai",
       "model": "claude",
-      "apiBase": "http://localhost:8080/v1",
+      "apiBase": "http://localhost:18080/v1",
       "apiKey": "duck-proxy"
     }
   ]
@@ -931,14 +931,14 @@ Models:   gpt5, claude, mistral</pre>
       <div class="ide-content-panel" id="ide-panel-cline" style="display:none;">
         <div class="ide-desc-box">
           1. In the extension settings, choose <strong>OpenAI Compatible</strong> provider.<br>
-          2. Base URL: <code>http://localhost:8080/v1</code><br>
+          2. Base URL: <code>http://localhost:18080/v1</code><br>
           3. API Key: <code>duck-proxy</code><br>
           4. Model ID: <code>gpt5</code> or <code>claude</code>
         </div>
         <div class="code-block">
           <button class="copy-btn-float" onclick="copySnippet('cline-snip')">Copy Settings</button>
           <pre id="cline-snip">Provider: OpenAI Compatible
-Base URL: http://localhost:8080/v1
+Base URL: http://localhost:18080/v1
 API Key:  duck-proxy
 Model ID: gpt5</pre>
         </div>
@@ -951,7 +951,7 @@ Model ID: gpt5</pre>
         </div>
         <div class="code-block">
           <button class="copy-btn-float" onclick="copySnippet('aider-snip')">Copy Command</button>
-          <pre id="aider-snip">export OPENAI_API_BASE="http://localhost:8080/v1"
+          <pre id="aider-snip">export OPENAI_API_BASE="http://localhost:18080/v1"
 export OPENAI_API_KEY="duck-proxy"
 aider --model openai/gpt5</pre>
         </div>
@@ -967,7 +967,7 @@ aider --model openai/gpt5</pre>
           <pre id="zed-snip">{
   "language_models": {
     "openai": {
-      "api_url": "http://localhost:8080/v1",
+      "api_url": "http://localhost:18080/v1",
       "available_models": [
         { "name": "gpt5", "display_name": "Duck GPT-5 Luna", "max_tokens": 8192 },
         { "name": "claude", "display_name": "Duck Claude Haiku", "max_tokens": 8192 }
@@ -985,7 +985,7 @@ aider --model openai/gpt5</pre>
         </div>
         <div class="code-block">
           <button class="copy-btn-float" onclick="copySnippet('windsurf-snip')">Copy Settings</button>
-          <pre id="windsurf-snip">Endpoint: http://localhost:8080/v1
+          <pre id="windsurf-snip">Endpoint: http://localhost:18080/v1
 API Key:  duck-proxy
 Model:    gpt5</pre>
         </div>
@@ -1001,7 +1001,7 @@ Model:    gpt5</pre>
           <pre id="neovim-snip">require('avante').setup({
   provider = "openai",
   openai = {
-    endpoint = "http://localhost:8080/v1",
+    endpoint = "http://localhost:18080/v1",
     model = "gpt5",
     api_key_name = "DUCK_PROXY_KEY",
     timeout = 30000,
@@ -1020,7 +1020,7 @@ Model:    gpt5</pre>
           <pre id="python-snip">from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:8080/v1",
+    base_url="http://localhost:18080/v1",
     api_key="duck-proxy"
 )
 
@@ -1042,7 +1042,7 @@ for chunk in response:
         </div>
         <div class="code-block">
           <button class="copy-btn-float" onclick="copySnippet('curl-snip')">Copy cURL</button>
-          <pre id="curl-snip">curl -N http://localhost:8080/v1/chat/completions \
+          <pre id="curl-snip">curl -N http://localhost:18080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "gpt5", "stream": true, "messages": [{"role": "user", "content": "Hello!"}]}'</pre>
         </div>
@@ -1084,20 +1084,21 @@ for chunk in response:
     }
 
     function copyCurl(type) {
+      const base = window.location.origin || 'http://localhost:18080';
       let cmd = '';
       if (type === 'models') {
-        cmd = 'curl http://localhost:8080/v1/models';
+        cmd = `curl ${base}/v1/models`;
       } else if (type === 'chat') {
         const m = document.getElementById('chat-model').value;
         const p = document.getElementById('chat-prompt').value.replace(/"/g, '\\"');
-        cmd = `curl http://localhost:8080/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${m}", "messages": [{"role": "user", "content": "${p}"}]}'`;
+        cmd = `curl ${base}/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${m}", "messages": [{"role": "user", "content": "${p}"}]}'`;
       } else if (type === 'stream') {
         const m = document.getElementById('stream-model').value;
         const p = document.getElementById('stream-prompt').value.replace(/"/g, '\\"');
-        cmd = `curl -N http://localhost:8080/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${m}", "stream": true, "messages": [{"role": "user", "content": "${p}"}]}'`;
+        cmd = `curl -N ${base}/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${m}", "stream": true, "messages": [{"role": "user", "content": "${p}"}]}'`;
       } else if (type === 'image') {
         const p = document.getElementById('image-prompt').value.replace(/"/g, '\\"');
-        cmd = `curl http://localhost:8080/v1/images/generations \\\n  -H "Content-Type: application/json" \\\n  -d '{"prompt": "${p}", "response_format": "b64_json"}'`;
+        cmd = `curl ${base}/v1/images/generations \\\n  -H "Content-Type: application/json" \\\n  -d '{"prompt": "${p}", "response_format": "b64_json"}'`;
       }
       navigator.clipboard.writeText(cmd);
       showToast('cURL command copied!');

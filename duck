@@ -8,8 +8,8 @@ set -e
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_PATH="$REPO_DIR/duck-proxy-rs/target/release/duck-proxy-rs"
 CONFIG_PATH="$REPO_DIR/duck-proxy-rs/config.yaml"
-APP_URL="http://localhost:8080/app"
-PORT=8080
+APP_URL="http://localhost:18080/app"
+PORT=18080
 
 # Build release binary if missing
 if [ ! -f "$BIN_PATH" ]; then
@@ -17,7 +17,7 @@ if [ ! -f "$BIN_PATH" ]; then
     cargo build --release --manifest-path "$REPO_DIR/duck-proxy-rs/Cargo.toml"
 fi
 
-# Check if proxy is already running on port 8080
+# Check if proxy is already running on port 18080
 if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1 || nc -z 127.0.0.1 $PORT 2>/dev/null; then
     STATUS_LINE="🟢 Duck Proxy is active on http://127.0.0.1:$PORT"
 else
@@ -48,10 +48,10 @@ cat << "EOF"
  │  DUCK // PROXY — Local AI Gateway (OpenAI Compatible)        │
  └──────────────────────────────────────────────────────────────┘
 
-  ● Base URL:    http://localhost:8080/v1
+  ● Base URL:    http://localhost:18080/v1
   ● API Key:     duck-proxy  (or any arbitrary key)
-  ● Dashboard:   http://localhost:8080/app
-  ● Status:      ONLINE  (Port 8080)
+  ● Dashboard:   http://localhost:18080/app
+  ● Status:      ONLINE  (Port 18080)
 
  ────────────────────────────────────────────────────────────────
   EXACT MODELS CATALOG:
@@ -64,8 +64,8 @@ cat << "EOF"
 
  ────────────────────────────────────────────────────────────────
   QUICK USAGE:
-   • Test API:   curl http://localhost:8080/v1/models
-   • Quick Chat: curl http://localhost:8080/v1/chat/completions \
+   • Test API:   curl http://localhost:18080/v1/models
+   • Quick Chat: curl http://localhost:18080/v1/chat/completions \
                    -H "Content-Type: application/json" \
                    -d '{"model":"gpt-5.6-luna","messages":[{"role":"user","content":"Hi"}]}'
    • IDE Setup:  See full Cursor, VS Code, ZCode, Zed at /app

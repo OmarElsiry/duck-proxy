@@ -46,8 +46,8 @@ cd duck-proxy
 
 > **⚡ What happens automatically:**
 > - Verifies/compiles the optimized release binary in pure Rust.
-> - Starts the background daemon on `http://127.0.0.1:8080`.
-> - Launches your default browser to the interactive dashboard (`http://localhost:8080/app`).
+> - Starts the background daemon on `http://127.0.0.1:18080`.
+> - Launches your default browser to the interactive dashboard (`http://localhost:18080/app`).
 > - Displays an instant status card with model catalog and quick-test curl commands.
 
 ### Manual / Developer Build
@@ -75,7 +75,7 @@ cargo run --release
 ```yaml
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 18080
 
 model_list:
   - model_name: gpt-5.6-luna
@@ -110,7 +110,7 @@ Because `duck-proxy-rs` implements standard OpenAI API specifications, you can u
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:8080/v1",
+    base_url="http://localhost:18080/v1",
     api_key="duck-proxy",  # Any non-empty string
 )
 
@@ -135,7 +135,7 @@ print()
 import OpenAI from "openai";
 
 const openai = new OpenAI({
-  baseURL: "http://localhost:8080/v1",
+  baseURL: "http://localhost:18080/v1",
   apiKey: "duck-proxy",
 });
 
@@ -166,7 +166,7 @@ opencode run -m duckproxy/gpt-5.6-luna --auto "gen img of a knight in shining ar
 import base64
 from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:8080/v1", api_key="duck-proxy")
+client = OpenAI(base_url="http://localhost:18080/v1", api_key="duck-proxy")
 
 response = client.images.generate(
     model="image",
@@ -182,7 +182,7 @@ print("Image saved to duck.png!")
 
 ### 🌐 Open WebUI / LibreChat / NextChat
 In your UI settings:
-- **API Base URL**: `http://localhost:8080/v1` (or `http://host.docker.internal:8080/v1` if running WebUI inside Docker)
+- **API Base URL**: `http://localhost:18080/v1` (or `http://host.docker.internal:18080/v1` if running WebUI inside Docker)
 - **API Key**: `duck-proxy`
 - **Models**: `gpt-5.6-luna`, `gpt5`, `gpt5_mini`, `claude`, `mistral`, `gemma`, `image`
 
@@ -195,14 +195,14 @@ Add to your Continue or Cursor custom model config:
       "title": "Duck GPT-5",
       "provider": "openai",
       "model": "gpt5",
-      "apiBase": "http://localhost:8080/v1",
+      "apiBase": "http://localhost:18080/v1",
       "apiKey": "duck-proxy"
     },
     {
       "title": "Duck Claude",
       "provider": "openai",
       "model": "claude",
-      "apiBase": "http://localhost:8080/v1",
+      "apiBase": "http://localhost:18080/v1",
       "apiKey": "duck-proxy"
     }
   ]
@@ -240,14 +240,14 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/duck-proxy-rs /app/duck-proxy-rs
 COPY --from=builder /app/config.yaml /app/config.yaml
-EXPOSE 8080
+EXPOSE 18080
 ENTRYPOINT ["/app/duck-proxy-rs"]
 ```
 
 Build and run:
 ```bash
 docker build -t duck-proxy-rs .
-docker run -d -p 8080:8080 --name duck-proxy duck-proxy-rs
+docker run -d -p 18080:18080 --name duck-proxy duck-proxy-rs
 ```
 
 ---

@@ -8,13 +8,13 @@ services:
     container_name: duck-proxy
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "18080:18080"
     volumes:
       - ./duck-proxy-rs/config.yaml:/app/config.yaml:ro
     environment:
       - RUST_LOG=duck_proxy_rs=info,tower_http=info
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/models"]
+      test: ["CMD", "curl", "-f", "http://localhost:18080/v1/models"]
       interval: 30s
       timeout: 5s
       retries: 3
