@@ -14,14 +14,13 @@ use super::types::*;
 
 /// User-Agent rotation pool for anti-rate-limit resilience.
 pub const USER_AGENTS: &[&str] = &[
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
 ];
 
 /// Primary User-Agent string used for default matching.
 pub const USER_AGENT: &str = USER_AGENTS[0];
 
-/// Frontend version header value.
-pub const FE_VERSION: &str = "serp_20260831_172655_ET-e467598985cfe05aa5c25952fcb403b13f760201";
+pub const FE_VERSION: &str = "serp_20260901_062643_ET-0a03b5a426016f1dc032dcf3e8c0ccdc5e42037c";
 
 /// Maximum retry attempts for chat requests.
 const MAX_RETRIES: u32 = 3;
@@ -39,11 +38,19 @@ impl ModelSession {
     pub fn new() -> Self {
         let ua_idx = (chrono::Utc::now().timestamp_subsec_nanos() as usize) % USER_AGENTS.len();
         Self {
+            user_agent: USER_AGENTS[ua_idx].to_string(),
             journey_id: uuid::Uuid::new_v4().simple().to_string(),
             conversation_id: uuid::Uuid::new_v4().to_string(),
             pending_challenge: None,
-            user_agent: USER_AGENTS[ua_idx].to_string(),
         }
+    }
+
+    pub fn reset(&mut self) {
+        let ua_idx = (chrono::Utc::now().timestamp_subsec_nanos() as usize) % USER_AGENTS.len();
+        self.user_agent = USER_AGENTS[ua_idx].to_string();
+        self.journey_id = uuid::Uuid::new_v4().simple().to_string();
+        self.conversation_id = uuid::Uuid::new_v4().to_string();
+        self.pending_challenge = None;
     }
 
     pub fn rotate_user_agent(&mut self) {
@@ -67,9 +74,9 @@ pub fn platform_for_ua(ua: &str) -> &'static str {
 
 pub fn sec_ch_ua_for_ua(ua: &str) -> &'static str {
     if ua.contains("Edg/") {
-        r#""Not A(Brand";v="8", "Chromium";v="133", "Microsoft Edge";v="133""#
+        r#""Not A(Brand";v="8", "Chromium";v="150", "Microsoft Edge";v="150""#
     } else {
-        r#""Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133""#
+        r#""Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150""#
     }
 }
 
@@ -522,19 +529,22 @@ impl DuckClient {
                                 }
                             }
 
-                            tracing::warn!("Duck.ai 418 anomaly resolved, retrying chat request for model '{}' with fresh challenge...", candidate_model);
-                            tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+                            tracing::warn!("Resetting model session and warming new journey after 418 challenge for model '{}'...", candidate_model);
+                            self.reset_model_session(candidate_model).await;
+                            let fresh_session = self.get_or_create_session(candidate_model).await;
+                            self.warm(&fresh_session.journey_id).await;
+                            tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
 
-                            let fresh_vqd = match self.get_solved_challenge_header(candidate_model, &session.journey_id).await {
+                            let fresh_vqd = match self.get_solved_challenge_header(candidate_model, &fresh_session.journey_id).await {
                                 Ok(v) => v,
                                 Err(_) => solved_vqd.clone(),
                             };
 
                             let mut retry_req = self.http
                                 .post(&url)
-                                .header("user-agent", &session.user_agent)
-                                .header("sec-ch-ua", sec_ch_ua_for_ua(&session.user_agent))
-                                .header("sec-ch-ua-platform", platform_for_ua(&session.user_agent))
+                                .header("user-agent", &fresh_session.user_agent)
+                                .header("sec-ch-ua", sec_ch_ua_for_ua(&fresh_session.user_agent))
+                                .header("sec-ch-ua-platform", platform_for_ua(&fresh_session.user_agent))
                                 .header("sec-ch-ua-mobile", "?0")
                                 .header("x-vqd-hash-1", &fresh_vqd)
                                 .header("origin", "https://duck.ai")
@@ -542,7 +552,7 @@ impl DuckClient {
                                 .header("accept", "text/event-stream")
                                 .header("content-type", "application/json");
 
-                            for (key, value) in self.generate_telemetry_headers(&session.journey_id) {
+                            for (key, value) in self.generate_telemetry_headers(&fresh_session.journey_id) {
                                 retry_req = retry_req.header(&key, &value);
                             }
 

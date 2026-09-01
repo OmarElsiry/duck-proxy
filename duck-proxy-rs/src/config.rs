@@ -176,7 +176,14 @@ impl Config {
     /// 5. Case-insensitive match against `duck_model`.
     /// 6. Prefix and family matching for IDEs (Codex, Cursor, Cline, etc.).
     pub fn resolve_model(&self, requested: &str) -> Option<&ModelMapping> {
-        let normalized = requested.strip_prefix("duck/").unwrap_or(requested).trim();
+        let mut normalized = requested.trim();
+        if let Some(s) = normalized.strip_prefix("duckproxy/") {
+            normalized = s;
+        } else if let Some(s) = normalized.strip_prefix("duck/") {
+            normalized = s;
+        } else if let Some(s) = normalized.strip_prefix("openai/") {
+            normalized = s;
+        }
 
         // 1. Exact match on model_name
         if let Some(m) = self.model_list.iter().find(|m| m.model_name == normalized) {
