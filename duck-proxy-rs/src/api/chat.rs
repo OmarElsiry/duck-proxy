@@ -835,19 +835,23 @@ pub async fn chat_completions(
     let has_tools = req.tools.as_ref().map(|t| !t.is_empty()).unwrap_or(false)
         || req.functions.as_ref().map(|f| !f.is_empty()).unwrap_or(false);
 
+    let user_prompt = if is_image_gen {
+        messages.first().map(|m| m.content.clone()).unwrap_or_else(|| "a horse".to_string())
+    } else {
+        req_messages
+            .iter()
+            .rev()
+            .find(|m| m.role == "user")
+            .and_then(|m| m.content.as_ref())
+            .map(|c| c.to_text())
+            .unwrap_or_else(|| "a horse".to_string())
+    };
+
     // Send to Duck.ai with automatic fallback cascade
     let duck_result = state
         .duck_client
         .send_chat_request_cascade(&duck_model, &messages, &fallback_chain, is_image_gen)
         .await;
-
-    let user_prompt = req_messages
-        .iter()
-        .rev()
-        .find(|m| m.role == "user")
-        .and_then(|m| m.content.as_ref())
-        .map(|c| c.to_text())
-        .unwrap_or_else(|| "a horse".to_string());
 
     let resp = match duck_result {
         Ok((r, _)) => r,

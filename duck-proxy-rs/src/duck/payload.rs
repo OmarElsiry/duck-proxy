@@ -65,7 +65,7 @@ pub fn build_chat_payload(
         can_use_tools: true,
         reasoning_effort: "none".to_string(),
         can_use_approx_location: None,
-        can_delegate_image_generation: if is_image_gen { Some(true) } else { None },
+        can_delegate_image_generation: None,
         durable_stream: DurableStream {
             message_id,
             conversation_id,
