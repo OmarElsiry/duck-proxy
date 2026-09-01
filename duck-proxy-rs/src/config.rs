@@ -112,6 +112,7 @@ impl Default for Config {
 
 impl Config {
     /// Load configuration from a YAML string.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(yaml_str: &str) -> Result<Self, ConfigError> {
         let config: Config = serde_yaml::from_str(yaml_str)?;
         Ok(config)

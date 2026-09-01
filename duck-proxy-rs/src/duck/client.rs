@@ -20,7 +20,7 @@ pub const USER_AGENTS: &[&str] = &[
 /// Primary User-Agent string used for default matching.
 pub const USER_AGENT: &str = USER_AGENTS[0];
 
-pub const FE_VERSION: &str = "serp_20260901_062643_ET-0a03b5a426016f1dc032dcf3e8c0ccdc5e42037c";
+pub const FE_VERSION: &str = "serp_20260901_082630_ET-936860e07343d04bca3ac6903356b645079e640f";
 
 /// Maximum retry attempts for chat requests.
 const MAX_RETRIES: u32 = 3;
@@ -118,12 +118,12 @@ impl DuckClient {
 
         let http = reqwest::Client::builder()
             .default_headers(default_headers)
-            .cookie_store(false)
+            .cookie_store(true)
             .build()
             .expect("Failed to build HTTP client");
 
         let status_http = reqwest::Client::builder()
-            .cookie_store(false)
+            .cookie_store(true)
             .build()
             .expect("Failed to build status HTTP client");
 
@@ -160,10 +160,10 @@ impl DuckClient {
         headers.insert("referer", HeaderValue::from_static("https://duck.ai/"));
         headers.insert(
             "sec-ch-ua",
-            HeaderValue::from_static(r#""Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133""#),
+            HeaderValue::from_static(r#""Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150""#),
         );
         headers.insert("sec-ch-ua-mobile", HeaderValue::from_static("?0"));
-        headers.insert("sec-ch-ua-platform", HeaderValue::from_static(r#""Linux""#));
+        headers.insert("sec-ch-ua-platform", HeaderValue::from_static(r#""Windows""#));
         headers.insert("sec-fetch-dest", HeaderValue::from_static("empty"));
         headers.insert("sec-fetch-mode", HeaderValue::from_static("cors"));
         headers.insert("sec-fetch-site", HeaderValue::from_static("same-origin"));
@@ -254,8 +254,14 @@ impl DuckClient {
         let signals_json = serde_json::to_string(&signals).unwrap_or_default();
         let signals_b64 = BASE64_STANDARD.encode(signals_json.as_bytes());
 
+        let fe_version = self
+            .fe_version
+            .try_read()
+            .map(|v| v.clone())
+            .unwrap_or_else(|_| FE_VERSION.to_string());
+
         vec![
-            ("x-fe-version".to_string(), FE_VERSION.to_string()),
+            ("x-fe-version".to_string(), fe_version),
             ("x-ddg-journey-id".to_string(), journey_id.to_string()),
             ("x-fe-signals".to_string(), signals_b64),
         ]
@@ -561,7 +567,7 @@ impl DuckClient {
                                 candidate_model,
                                 messages.to_vec(),
                                 &self.keypair,
-                                false,
+                                is_image_gen,
                                 &retry_conversation_id,
                             );
 

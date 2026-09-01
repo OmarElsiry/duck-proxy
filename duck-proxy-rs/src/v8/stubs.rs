@@ -53,11 +53,7 @@ pub fn extract_html_lookup(js_code: &str) -> HashMap<String, HtmlLookupEntry> {
             let mut escaped = false;
 
             while j < len && (chars[j] != quote || escaped) && (j - start) < 400 {
-                if chars[j] == '\\' && !escaped {
-                    escaped = true;
-                } else {
-                    escaped = false;
-                }
+                escaped = chars[j] == '\\' && !escaped;
                 j += 1;
             }
 

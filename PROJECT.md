@@ -1,103 +1,64 @@
-# Project: Duck-Proxy Live Simulation & E2E Verification Framework
+# Project: Native Duck.ai gpt-image 2.0 Integration
 
 ## Architecture
-The simulation framework is completely isolated within `/home/potterparker/Desktop/prjcts/duck-proxy/tests_simulation/`.
-It validates the live `duck-proxy-rs` server running at `http://127.0.0.1:8080/v1` using an automated multi-turn Codex CLI agent executing realistic software engineering scenarios against a genuine mock multi-file Python codebase ("TaskPulse").
+`duck-proxy-rs` operates as a high-performance local proxy bridging OpenAI-compatible API clients (such as the OpenCode TUI) to Duck.ai's upstream endpoints (`/duckchat/v1/chat`, `/duckchat/v1/status`, `/anomaly.js`).
 
-```
-[ duck-proxy-rs (Axum 0.7 @ :8080) ]
-               ▲
-               │ OpenAI HTTP / SSE (/v1/models, /v1/chat/completions, /v1/images/generations)
-               ▼
-[ Codex CLI Assistant Engine ] ─── interacts with ───► [ Mock Target: TaskPulse ]
- (Streaming Parser + Tool Calling)                       (Async Queue, Workers, Tests)
-               │
-               ▼
-[ Simulation Scenarios Runner (19 Turns) ] ───► [ Stress & Concurrency Diagnostics ]
-               │
-               ▼
-[ Metric Sampler (psutil) & Report Generator ] ───► tests_simulation/SIMULATION_REPORT.md
-```
+Data and control flow:
+1. **Client Ingestion (`src/api/chat.rs`)**:
+   - Accepts `/v1/chat/completions` requests from OpenCode TUI.
+   - Detects image generation intent via `is_image_generation_intent`.
+   - Strips system prompt permission injection (`OMNI_PERMISSIONS_PROMPT`) for image requests.
+   - Preserves user prompt text without destructive bracket truncation.
+2. **Upstream Request & Session Management (`src/duck/payload.rs`, `src/duck/client.rs`)**:
+   - Constructs `DuckChatRequest` with `model: "gpt-5.6-luna"`, `metadata.toolChoice.GenerateImage: true`, `canUseTools: true`, `reasoningEffort: "none"`, and RSA-OAEP-256 JWK in `durableStream`.
+   - Manages per-model sessions, VQD rotation, and handles HTTP 418 challenges by executing `/anomaly.js` PoW and preserving `is_image_gen = true` across in-flight retries.
+3. **SSE Stream Processing (`src/duck/stream.rs`)**:
+   - Parses upstream SSE events for both text and image streams.
+   - Handles `b64Image`, `data.b64Image`, `action: "image-partial"` / `"image-final"`, and `role: "partial-image"` / `"generated-image"`.
+   - Assembles multi-chunk partial base64 streams into complete image payloads.
+4. **Tool Call Synthesis & Single-Shot Turn Completion (`src/api/chat.rs`)**:
+   - Derives descriptive filenames (e.g. `knight.png`) from prompts.
+   - Buffers base64 to `/tmp/.duck_img_<id>.b64` and emits a quiet `bash` decode command echoing the resolved full path.
+   - Returns OpenAI tool call schema with `finish_reason: "tool_calls"`.
+   - On the subsequent turn containing `role: "tool"`, recognizes completion, suppresses replay, and terminates with `finish_reason: "stop"`.
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |
 |---|---------|-------------|-----------|--------|
-| F1 | Proxy Lifecycle & Health Harness | Spawns/manages `duck-proxy-rs`, probes `GET /v1/models`, captures stderr/stdout, clean shutdown | M1 | ORIGINAL_REQUEST §R1 |
-| F2 | System Metric & Memory Sampler | Background thread measuring RSS (MB), CPU%, open FDs, thread counts during test execution | M1 | ORIGINAL_REQUEST §R1, R4 |
-| F3 | Codex CLI OpenAI SSE Client | Connects to `http://127.0.0.1:8080/v1`, streams SSE tokens, tracks TTFT & chunk latencies | M2 | ORIGINAL_REQUEST §R2 |
-| F4 | Codex Assistant Tool Engine | Executes `view_file`, `patch_file`, `write_file`, `list_files`, `run_tests` in mock workspace | M2 | ORIGINAL_REQUEST §R2 |
-| F5 | Multi-Model Protocol Switcher | Seamlessly switches between `gpt5`, `claude`, `mistral`, and `image` model endpoints | M2 | ORIGINAL_REQUEST §R2 |
-| F6 | Mock Target Codebase: TaskPulse | Multi-file async task queue engine with models, worker pools, storage, dispatcher, and unit tests | M3 | ORIGINAL_REQUEST §R3 |
-| F7 | Scenario 1: Architecture Exploration | 4-turn interactive exploration of project files, classes, and entrypoints | M3 | ORIGINAL_REQUEST §R3 |
-| F8 | Scenario 2: Bug Diagnosis & Patching | 4-turn diagnosis of failing unit test, patch generation, and test verification | M3 | ORIGINAL_REQUEST §R3 |
-| F9 | Scenario 3: Feature Addition & Tests | 4-turn implementation of Dead Letter Queue (DLQ) with new unit tests | M3 | ORIGINAL_REQUEST §R3 |
-| F10 | Scenario 4: Safe Multi-Turn Refactoring | 4-turn refactoring of task retry strategy and execution pipeline while keeping tests green | M3 | ORIGINAL_REQUEST §R3 |
-| F11 | Scenario 5: Reasoning & Image Generation | 3-turn architectural trade-off reasoning and `/v1/images/generations` test | M3 | ORIGINAL_REQUEST §R3 |
-| F12 | Stress, Concurrency & SSE Resilience | Multi-client concurrent load, SSE connection drop test, upstream 429 exponential backoff validation | M4 | ORIGINAL_REQUEST §R4 |
-| F13 | Full E2E Execution & Report Synthesis | Executes full test harness (19 turns + stress), generates `tests_simulation/SIMULATION_REPORT.md` | M5 | ORIGINAL_REQUEST §R4 |
+| 1 | Upstream Image Payload Construction | `toolChoice.GenerateImage: true`, model `gpt-5.6-luna`, JWK in `durableStream` | M1 | Survey |
+| 2 | SSE Multi-Chunk Stream Assembly | Aggregate `image-partial` base64 chunks without truncating to first chunk | M1 | Survey |
+| 3 | Prompt Preservation | Eliminate indiscriminate `find('[')` bracket truncation on image prompts | M1 | Survey |
+| 4 | 418 Anomaly Retry with Image Flag | Pass `is_image_gen` during 418 challenge retries in `client.rs` | M2 | Survey |
+| 5 | Anti-Bot & Session Resilience | Maintain V8 challenge solving, VQD rotation, zero external fallbacks | M2 | Survey |
+| 6 | OpenCode TUI Tool Call Synthesis | Synthesize `bash` tool call decoding base64 to workspace file and printing full path | M3 | Survey |
+| 7 | Single-Shot Turn Completion | Conclude follow-up tool turn cleanly with `finish_reason: "stop"` | M3 | Survey |
+| 8 | Automated Protocol Test Suite | 100% pass on `tests/protocol_tests.rs` and comprehensive E2E tests | M4 | Survey |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| 1 | M1: Simulation Harness & Health Monitor | `tests_simulation/harness/` (Process lifecycle, `/v1/models` check, psutil sampler) | none | DONE |
-| 2 | M2: Codex CLI Assistant & Tool Engine | `tests_simulation/codex_cli/` (OpenAI client, SSE streaming, tool runner, multi-turn state) | M1 | PLANNED |
-| 3 | M3: Mock Project & 5 Scenario Runners | `tests_simulation/mock_project/`, `tests_simulation/scenarios/` (TaskPulse codebase & 5 scenarios) | M2 | PLANNED |
-| 4 | M4: Stress, Concurrency & Diagnostics | `tests_simulation/diagnostics/` (Concurrent load, SSE resilience, rate limit recovery) | M3 | PLANNED |
-| 5 | M5: E2E Runner & SIMULATION_REPORT | `tests_simulation/run_simulation.py`, `tests_simulation/SIMULATION_REPORT.md` generation | M4 | PLANNED |
+| 1 | Upstream Native Wire Protocol & Multi-Chunk SSE Assembly | `src/api/chat.rs`, `src/duck/stream.rs`, `src/duck/payload.rs` | none | PLANNED |
+| 2 | Challenge Anomaly Retry & Session Resilience | `src/duck/client.rs` | M1 | PLANNED |
+| 3 | OpenCode TUI Tool Call Synthesis & Single-Shot Hardening | `src/api/chat.rs`, `src/api/images.rs` | M1 | PLANNED |
+| 4 | Protocol & E2E Test Suite Validation | `tests/protocol_tests.rs`, `tests/e2e_tier1_features.rs` | M1, M2, M3 | PLANNED |
 
 ## Interface Contracts
-### `harness` ↔ `codex_cli` / `scenarios`
-- `ProxyManager.start() -> bool`: Spawns binary or cargo process on 8080, polls `/v1/models` until ready.
-- `ProxyManager.stop() -> None`: Sends SIGTERM, verifies cleanup.
-- `MetricsCollector.start() / .stop() -> Dict[str, Any]`: Returns RSS, CPU, FD timeseries.
+### `duck-proxy-rs` ↔ Duck.ai Upstream
+- Endpoint: `POST https://duck.ai/duckchat/v1/chat`
+- Headers: `x-vqd-hash-1: <v8_solved_hash>`, `x-fe-version`, `x-ddg-journey-id`, `x-fe-signals`
+- Payload: `{"model":"gpt-5.6-luna","messages":[{"role":"user","content":"<prompt>"}],"metadata":{"toolChoice":{"GenerateImage":true}},"canUseTools":true,"durableStream":{"publicKey":{...}}}`
+- Response SSE Actions: `image-partial`, `image-final`, `b64Image`, `ImageData`
 
-### `codex_cli` ↔ `scenarios`
-- `CodexClient.chat_stream(messages, model, tools) -> AsyncIterator[StreamChunk]`: Yields tokens, records TTFT, total latency, tool calls.
-- `ToolExecutor.execute(tool_name, arguments) -> ToolResult`: Dispatches filesystem / test execution inside target project.
-
-### `mock_project` ↔ `scenarios`
-- Project root: `tests_simulation/mock_project/`
-- Test command: `pytest tests_simulation/mock_project/tests/`
+### OpenCode TUI ↔ `duck-proxy-rs`
+- Endpoint: `POST /v1/chat/completions`
+- Request: OpenAI format with `messages` and `tools`
+- Turn 1 Response: `finish_reason: "tool_calls"`, `tool_calls: [{"id": "...", "type": "function", "function": {"name": "bash", "arguments": "{\"command\": \"base64 -d /tmp/.duck_img_*.b64 > 'knight.png' && rm -f /tmp/.duck_img_*.b64 && echo \\\"Image successfully saved to: $(realpath 'knight.png' 2>/dev/null || echo \\\"$(pwd)/knight.png\\\")\\\"\"}"}}]`
+- Turn 2 Response (after tool result): `finish_reason: "stop"`, `content: "Operation completed successfully."`
 
 ## Code Layout
-```
-tests_simulation/
-├── harness/
-│   ├── __init__.py
-│   ├── proxy_manager.py       # Duck-proxy process lifecycle & health checker
-│   └── metrics_collector.py   # psutil background sampler (RSS, CPU%, threads, FDs)
-├── codex_cli/
-│   ├── __init__.py
-│   ├── client.py              # OpenAI API SSE client & token tracker
-│   ├── session.py             # Multi-turn conversation state manager
-│   ├── tools.py               # File view/patch/write & pytest runner tools
-│   └── models.py              # Model mapping (gpt5, claude, mistral, image)
-├── mock_project/
-│   ├── taskpulse/
-│   │   ├── __init__.py
-│   │   ├── models.py          # Task, TaskPriority, TaskStatus
-│   │   ├── queue.py           # Priority task queue
-│   │   ├── worker.py          # Worker pool & execution
-│   │   ├── storage.py         # In-memory storage & persistence
-│   │   └── dispatcher.py      # Main API dispatcher
-│   └── tests/
-│       ├── test_queue.py
-│       ├── test_worker.py
-│       └── test_dispatcher.py
-├── scenarios/
-│   ├── __init__.py
-│   ├── runner.py              # Scenario execution engine
-│   ├── scenario_1_explore.py  # Codebase exploration scenario (4 turns)
-│   ├── scenario_2_bugfix.py   # Bug fixing scenario (4 turns)
-│   ├── scenario_3_feature.py  # Feature addition & tests scenario (4 turns)
-│   ├── scenario_4_refactor.py # Multi-turn refactoring scenario (4 turns)
-│   └── scenario_5_reasoning.py# Reasoning & image scenario (3 turns)
-├── diagnostics/
-│   ├── __init__.py
-│   ├── stress_test.py         # Concurrent client requests & latency profiling
-│   └── resilience_test.py     # SSE drop resilience & 429 rate limit backoff
-├── reports/
-│   └── report_generator.py    # Formats markdown SIMULATION_REPORT.md
-├── run_simulation.py          # Master CLI entrypoint
-└── SIMULATION_REPORT.md       # Final generated simulation artifact
-```
+- `duck-proxy-rs/src/api/chat.rs`: Request handling, intent detection, prompt preparation, tool synthesis
+- `duck-proxy-rs/src/duck/payload.rs`: Upstream chat & image payload serializer
+- `duck-proxy-rs/src/duck/stream.rs`: Upstream SSE parser
+- `duck-proxy-rs/src/duck/client.rs`: Upstream HTTP client, VQD manager, 418 challenge retry
+- `duck-proxy-rs/src/v8/actor.rs`: V8 isolate challenge solver
+- `duck-proxy-rs/tests/protocol_tests.rs`: Core protocol tests

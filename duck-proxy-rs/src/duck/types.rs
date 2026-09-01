@@ -10,7 +10,7 @@ pub struct DuckChatMessage {
 }
 
 /// Tool choice flags sent in chat metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolChoice {
     #[serde(rename = "NewsSearch")]
     pub news_search: bool,
@@ -22,18 +22,6 @@ pub struct ToolChoice {
     pub weather_forecast: bool,
     #[serde(rename = "GenerateImage", skip_serializing_if = "Option::is_none")]
     pub generate_image: Option<bool>,
-}
-
-impl Default for ToolChoice {
-    fn default() -> Self {
-        Self {
-            news_search: false,
-            videos_search: false,
-            local_search: false,
-            weather_forecast: false,
-            generate_image: None,
-        }
-    }
 }
 
 /// Metadata block in the chat request.
@@ -121,7 +109,7 @@ mod tests {
             }],
             can_use_tools: true,
             reasoning_effort: "none".to_string(),
-            can_use_approx_location: None,
+            can_use_approx_location: Some(true),
             can_delegate_image_generation: None,
             durable_stream: DurableStream {
                 message_id: "abc".to_string(),

@@ -4,7 +4,7 @@ use axum::{extract::State, Json};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::duck::{build_chat_payload, DuckChatMessage, IMAGE_GEN_CHAT_MODEL};
+use crate::duck::{DuckChatMessage, IMAGE_GEN_CHAT_MODEL};
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -60,16 +60,13 @@ pub async fn generate_image(
         content: req.prompt,
     }];
 
-    let conv_id = uuid::Uuid::new_v4().to_string();
-    let payload = build_chat_payload(
+    let fallback_chain = vec![IMAGE_GEN_CHAT_MODEL.to_string(), "gpt-5.4-mini".to_string()];
+    let (resp, _) = state.duck_client.send_chat_request_cascade(
         IMAGE_GEN_CHAT_MODEL,
-        messages,
-        state.duck_client.keypair(),
+        &messages,
+        &fallback_chain,
         true,
-        &conv_id,
-    );
-
-    let resp = state.duck_client.send_chat_request(&payload).await?;
+    ).await?;
     let body = resp.text().await.map_err(|e| {
         AppError::bad_gateway(format!("Failed to read upstream image response: {}", e))
     })?;

@@ -342,7 +342,7 @@ pub fn normalize_messages_for_duck(
     }
 
     // If tools are provided, add a final reminder on the last user message to call tool
-    if tools.map_or(false, |t| !t.is_empty()) || functions.map_or(false, |f| !f.is_empty()) {
+    if tools.is_some_and(|t| !t.is_empty()) || functions.is_some_and(|f| !f.is_empty()) {
         if let Some(last_user) = normalized.iter_mut().rev().find(|m| m.role == "user") {
             last_user.content.push_str("\n\n(Execute the requested action by calling the appropriate tool directly using <tool_call>{\"name\": \"...\", \"arguments\": {...}}</tool_call>)");
         }
@@ -796,15 +796,11 @@ pub async fn chat_completions(
             .map(|m| m.content.as_ref().map(|c| c.to_text()).unwrap_or_default())
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| "a beautiful illustration".to_string());
-        let clean_prompt = if let Some(idx) = raw_prompt.find('[') {
-            raw_prompt[..idx].trim().to_string()
+        let prompt = raw_prompt.trim().trim_matches('"').trim_matches('\'').trim().to_string();
+        let prompt = if prompt.is_empty() {
+            "a beautiful illustration".to_string()
         } else {
-            raw_prompt.trim().to_string()
-        };
-        let prompt = if clean_prompt.is_empty() {
-            raw_prompt
-        } else {
-            clean_prompt
+            prompt
         };
         vec![DuckChatMessage {
             role: "user".to_string(),
@@ -829,9 +825,6 @@ pub async fn chat_completions(
 
     let completion_id = format!("chatcmpl-{}", uuid::Uuid::new_v4());
     let created = Utc::now().timestamp();
-
-    let has_tools = req.tools.as_ref().map(|t| !t.is_empty()).unwrap_or(false)
-        || req.functions.as_ref().map(|f| !f.is_empty()).unwrap_or(false);
 
     let user_prompt = if is_image_gen {
         messages.first().map(|m| m.content.clone()).unwrap_or_else(|| "a horse".to_string())
@@ -888,7 +881,7 @@ pub async fn chat_completions(
     };
 
     if req.stream {
-        handle_streaming(resp, completion_id, created, req.model, user_prompt, has_tools).await
+        handle_streaming(resp, completion_id, created, req.model, &user_prompt).await
     } else {
         handle_non_streaming(resp, completion_id, created, req.model, &user_prompt).await
     }
@@ -951,7 +944,13 @@ async fn handle_text_streaming(
 
 /// Derives a clean, descriptive image filename from the user's prompt (e.g. "knight_icon.png").
 pub fn derive_image_filename(prompt: &str) -> String {
-    let lower = prompt.to_lowercase();
+    // Strip bracketed instructions like [caveman ...] or [ENVIRONMENT ...]
+    let base_prompt = if let Some(idx) = prompt.find('[') {
+        &prompt[..idx]
+    } else {
+        prompt
+    };
+    let lower = base_prompt.to_lowercase();
     let stopwords = [
         "can", "you", "u", "please", "gen", "generate", "an", "a", "img", "image",
         "images", "picture", "photo", "illustration", "of", "draw", "me", "paint",
@@ -1046,11 +1045,13 @@ async fn handle_non_streaming(
     }
 
     let mut tool_calls = extract_tool_calls(&accumulated);
+    let mut message_content = Some(accumulated);
     if tool_calls.is_none() && !generated_images.is_empty() {
-        let b64 = &generated_images[0];
+        let b64 = generated_images.concat();
         let filename = derive_image_filename(prompt);
-        let (tool_call, _) = build_image_write_tool_call(b64, &filename);
+        let (tool_call, _) = build_image_write_tool_call(&b64, &filename);
         tool_calls = Some(vec![tool_call]);
+        message_content = None;
     }
 
     let finish_reason = if tool_calls.is_some() {
@@ -1068,7 +1069,7 @@ async fn handle_non_streaming(
             index: 0,
             message: ResponseMessage {
                 role: "assistant".to_string(),
-                content: Some(accumulated),
+                content: message_content,
                 tool_calls,
             },
             finish_reason,
@@ -1089,38 +1090,16 @@ async fn handle_streaming(
     completion_id: String,
     created: i64,
     model: String,
-    prompt: String,
-    has_tools: bool,
+    prompt: &str,
 ) -> Result<Response, AppError> {
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(100);
+    let prompt_owned = prompt.to_string();
 
     tokio::spawn(async move {
         let mut byte_stream = resp.bytes_stream();
         let mut buffer = String::new();
-        let mut accumulated_text = String::new();
+        let mut first_chunk = true;
         let mut generated_images: Vec<String> = Vec::new();
-
-        if !has_tools {
-            // Send standard initial role chunk
-            let init_chunk = ChatCompletionChunk {
-                id: completion_id.clone(),
-                object: "chat.completion.chunk".to_string(),
-                created,
-                model: model.clone(),
-                choices: vec![ChunkChoice {
-                    index: 0,
-                    delta: Delta {
-                        role: Some("assistant".to_string()),
-                        content: Some("".to_string()),
-                        tool_calls: None,
-                    },
-                    finish_reason: None,
-                }],
-            };
-            if let Ok(json) = serde_json::to_string(&init_chunk) {
-                let _ = tx.send(Ok(Event::default().data(json))).await;
-            }
-        }
 
         while let Some(chunk_res) = byte_stream.next().await {
             match chunk_res {
@@ -1135,58 +1114,36 @@ async fn handle_streaming(
                             if let Some(sse_event) = parse_sse_line(&line) {
                                 match sse_event {
                                     SseEvent::Token(token) => {
-                                        accumulated_text.push_str(&token);
+                                        let role = if first_chunk {
+                                            first_chunk = false;
+                                            Some("assistant".to_string())
+                                        } else {
+                                            None
+                                        };
 
-                                        if !has_tools {
-                                            let delta = Delta {
-                                                role: None,
-                                                content: Some(token),
-                                                tool_calls: None,
-                                            };
+                                        let delta = Delta {
+                                            role,
+                                            content: Some(token),
+                                            tool_calls: None,
+                                        };
 
-                                            let chunk = ChatCompletionChunk {
-                                                id: completion_id.clone(),
-                                                object: "chat.completion.chunk".to_string(),
-                                                created,
-                                                model: model.clone(),
-                                                choices: vec![ChunkChoice {
-                                                    index: 0,
-                                                    delta,
-                                                    finish_reason: None,
-                                                }],
-                                            };
-                                            if let Ok(json) = serde_json::to_string(&chunk) {
-                                                let _ = tx.send(Ok(Event::default().data(json))).await;
-                                            }
+                                        let chunk = ChatCompletionChunk {
+                                            id: completion_id.clone(),
+                                            object: "chat.completion.chunk".to_string(),
+                                            created,
+                                            model: model.clone(),
+                                            choices: vec![ChunkChoice {
+                                                index: 0,
+                                                delta,
+                                                finish_reason: None,
+                                            }],
+                                        };
+                                        if let Ok(json) = serde_json::to_string(&chunk) {
+                                            let _ = tx.send(Ok(Event::default().data(json))).await;
                                         }
                                     }
                                     SseEvent::ImageData(b64) => {
-                                        generated_images.push(b64.clone());
-                                        let img_markdown = format!("\n![Generated Image](data:image/png;base64,{})\n", b64);
-                                        accumulated_text.push_str(&img_markdown);
-
-                                        if !has_tools {
-                                            let delta = Delta {
-                                                role: None,
-                                                content: Some(img_markdown),
-                                                tool_calls: None,
-                                            };
-
-                                            let chunk = ChatCompletionChunk {
-                                                id: completion_id.clone(),
-                                                object: "chat.completion.chunk".to_string(),
-                                                created,
-                                                model: model.clone(),
-                                                choices: vec![ChunkChoice {
-                                                    index: 0,
-                                                    delta,
-                                                    finish_reason: None,
-                                                }],
-                                            };
-                                            if let Ok(json) = serde_json::to_string(&chunk) {
-                                                let _ = tx.send(Ok(Event::default().data(json))).await;
-                                            }
-                                        }
+                                        generated_images.push(b64);
                                     }
                                     SseEvent::Done => {
                                         break;
@@ -1208,170 +1165,85 @@ async fn handle_streaming(
             if let Some(sse_event) = parse_sse_line(&buffer) {
                 match sse_event {
                     SseEvent::Token(token) => {
-                        accumulated_text.push_str(&token);
-                        if !has_tools {
-                            let delta = Delta {
-                                role: None,
-                                content: Some(token),
-                                tool_calls: None,
-                            };
+                        let role = if first_chunk {
+                            first_chunk = false;
+                            Some("assistant".to_string())
+                        } else {
+                            None
+                        };
 
-                            let chunk = ChatCompletionChunk {
-                                id: completion_id.clone(),
-                                object: "chat.completion.chunk".to_string(),
-                                created,
-                                model: model.clone(),
-                                choices: vec![ChunkChoice {
-                                    index: 0,
-                                    delta,
-                                    finish_reason: None,
-                                }],
-                            };
-                            if let Ok(json) = serde_json::to_string(&chunk) {
-                                let _ = tx.send(Ok(Event::default().data(json))).await;
-                            }
+                        let delta = Delta {
+                            role,
+                            content: Some(token),
+                            tool_calls: None,
+                        };
+
+                        let chunk = ChatCompletionChunk {
+                            id: completion_id.clone(),
+                            object: "chat.completion.chunk".to_string(),
+                            created,
+                            model: model.clone(),
+                            choices: vec![ChunkChoice {
+                                index: 0,
+                                delta,
+                                finish_reason: None,
+                            }],
+                        };
+                        if let Ok(json) = serde_json::to_string(&chunk) {
+                            let _ = tx.send(Ok(Event::default().data(json))).await;
                         }
                     }
                     SseEvent::ImageData(b64) => {
-                        generated_images.push(b64.clone());
-                        let img_markdown = format!("\n![Generated Image](data:image/png;base64,{})\n", b64);
-                        accumulated_text.push_str(&img_markdown);
+                        generated_images.push(b64);
                     }
                     _ => {}
                 }
             }
         }
 
-        if accumulated_text.trim().is_empty() {
-            if !generated_images.is_empty() {
-                accumulated_text = "Generated image successfully created.".to_string();
+        if !generated_images.is_empty() {
+            let b64 = generated_images.concat();
+            let filename = derive_image_filename(&prompt_owned);
+            let (tool_call, _) = build_image_write_tool_call(&b64, &filename);
+
+            let role = if first_chunk {
+                Some("assistant".to_string())
             } else {
-                accumulated_text = "I received your request. How can I assist you with this?".to_string();
-            }
-        }
+                None
+            };
 
-        tracing::info!("Streaming finished. Accumulated text: {}", accumulated_text);
+            let tool_chunk = ToolCallChunk {
+                index: 0,
+                id: Some(tool_call.id),
+                call_type: Some(tool_call.call_type),
+                function: FunctionCallChunk {
+                    name: Some(tool_call.function.name),
+                    arguments: Some(tool_call.function.arguments),
+                },
+            };
 
-        if has_tools {
-            let mut tool_calls = extract_tool_calls(&accumulated_text);
-            if tool_calls.is_none() && !generated_images.is_empty() {
-                let b64 = &generated_images[0];
-                let filename = derive_image_filename(&prompt);
-                let (tool_call, _) = build_image_write_tool_call(b64, &filename);
-                tool_calls = Some(vec![tool_call]);
-            }
-            if let Some(tool_calls) = tool_calls {
-                // Send role chunk
-                let chunk = ChatCompletionChunk {
-                    id: completion_id.clone(),
-                    object: "chat.completion.chunk".to_string(),
-                    created,
-                    model: model.clone(),
-                    choices: vec![ChunkChoice {
-                        index: 0,
-                        delta: Delta {
-                            role: Some("assistant".to_string()),
-                            content: None,
-                            tool_calls: None,
-                        },
-                        finish_reason: None,
-                    }],
-                };
-                if let Ok(json) = serde_json::to_string(&chunk) {
-                    let _ = tx.send(Ok(Event::default().data(json))).await;
-                }
+            let delta = Delta {
+                role,
+                content: None,
+                tool_calls: Some(vec![tool_chunk]),
+            };
 
-                // Send tool call chunks
-                for (i, tc) in tool_calls.iter().enumerate() {
-                    let chunk = ChatCompletionChunk {
-                        id: completion_id.clone(),
-                        object: "chat.completion.chunk".to_string(),
-                        created,
-                        model: model.clone(),
-                        choices: vec![ChunkChoice {
-                            index: 0,
-                            delta: Delta {
-                                role: None,
-                                content: None,
-                                tool_calls: Some(vec![ToolCallChunk {
-                                    index: i as u32,
-                                    id: Some(tc.id.clone()),
-                                    call_type: Some("function".to_string()),
-                                    function: FunctionCallChunk {
-                                        name: Some(tc.function.name.clone()),
-                                        arguments: Some(tc.function.arguments.clone()),
-                                    },
-                                }]),
-                            },
-                            finish_reason: None,
-                        }],
-                    };
-                    if let Ok(json) = serde_json::to_string(&chunk) {
-                        let _ = tx.send(Ok(Event::default().data(json))).await;
-                    }
-                }
-
-                // Send finish reason chunk
-                let chunk = ChatCompletionChunk {
-                    id: completion_id.clone(),
-                    object: "chat.completion.chunk".to_string(),
-                    created,
-                    model: model.clone(),
-                    choices: vec![ChunkChoice {
-                        index: 0,
-                        delta: Delta {
-                            role: None,
-                            content: None,
-                            tool_calls: None,
-                        },
-                        finish_reason: Some("tool_calls".to_string()),
-                    }],
-                };
-                if let Ok(json) = serde_json::to_string(&chunk) {
-                    let _ = tx.send(Ok(Event::default().data(json))).await;
-                }
-            } else {
-                // No tool call detected, send full accumulated text
-                let chunk = ChatCompletionChunk {
-                    id: completion_id.clone(),
-                    object: "chat.completion.chunk".to_string(),
-                    created,
-                    model: model.clone(),
-                    choices: vec![ChunkChoice {
-                        index: 0,
-                        delta: Delta {
-                            role: Some("assistant".to_string()),
-                            content: Some(accumulated_text),
-                            tool_calls: None,
-                        },
-                        finish_reason: None,
-                    }],
-                };
-                if let Ok(json) = serde_json::to_string(&chunk) {
-                    let _ = tx.send(Ok(Event::default().data(json))).await;
-                }
-
-                let chunk = ChatCompletionChunk {
-                    id: completion_id.clone(),
-                    object: "chat.completion.chunk".to_string(),
-                    created,
-                    model: model.clone(),
-                    choices: vec![ChunkChoice {
-                        index: 0,
-                        delta: Delta {
-                            role: None,
-                            content: None,
-                            tool_calls: None,
-                        },
-                        finish_reason: Some("stop".to_string()),
-                    }],
-                };
-                if let Ok(json) = serde_json::to_string(&chunk) {
-                    let _ = tx.send(Ok(Event::default().data(json))).await;
-                }
+            let chunk = ChatCompletionChunk {
+                id: completion_id.clone(),
+                object: "chat.completion.chunk".to_string(),
+                created,
+                model: model.clone(),
+                choices: vec![ChunkChoice {
+                    index: 0,
+                    delta,
+                    finish_reason: Some("tool_calls".to_string()),
+                }],
+            };
+            if let Ok(json) = serde_json::to_string(&chunk) {
+                let _ = tx.send(Ok(Event::default().data(json))).await;
             }
         } else {
-            // Finish reason stop for direct streaming
+            // Finish reason stop
             let chunk = ChatCompletionChunk {
                 id: completion_id.clone(),
                 object: "chat.completion.chunk".to_string(),

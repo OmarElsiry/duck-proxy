@@ -123,10 +123,10 @@ pub fn solve_challenge_sync(challenge_b64: &str, user_agent: Option<&str>) -> Re
 
         if let Some(obj) = challenge_json.as_object_mut() {
             // Keep existing client_hashes if present, else inject UA hash
-            if !obj.contains_key("client_hashes") || obj["client_hashes"].as_array().map_or(true, |a| a.is_empty()) {
+            if !obj.contains_key("client_hashes") || obj["client_hashes"].as_array().is_none_or(|a| a.is_empty()) {
                 obj.insert(
                     "client_hashes".to_string(),
-                    serde_json::json!([b64_sha256(USER_AGENT)]),
+                    serde_json::json!([b64_sha256(ua)]),
                 );
             }
 
@@ -188,10 +188,31 @@ pub fn solve_challenge_sync(challenge_b64: &str, user_agent: Option<&str>) -> Re
     let mut parsed: serde_json::Value = serde_json::from_str(&json_str)
         .map_err(|e| format!("Failed to parse V8 JSON result: {}", e))?;
 
-    // If client_hashes is present and empty, ensure at least UA is present
     if let Some(obj) = parsed.as_object_mut() {
-        if !obj.contains_key("client_hashes") || obj["client_hashes"].as_array().map_or(true, |a| a.is_empty()) {
+        if let Some(client_hashes) = obj.get_mut("client_hashes") {
+            if let Some(arr) = client_hashes.as_array_mut() {
+                if arr.is_empty() {
+                    arr.push(serde_json::json!(b64_sha256(ua)));
+                } else {
+                    for item in arr.iter_mut() {
+                        if let Some(s) = item.as_str() {
+                            *item = serde_json::json!(b64_sha256(s));
+                        }
+                    }
+                }
+            }
+        } else {
             obj.insert("client_hashes".to_string(), serde_json::json!([b64_sha256(ua)]));
+        }
+
+        let meta = obj.entry("meta").or_insert(serde_json::json!({}));
+        if let Some(meta_obj) = meta.as_object_mut() {
+            meta_obj.insert("origin".to_string(), serde_json::json!("https://duck.ai"));
+            meta_obj.insert(
+                "stack".to_string(),
+                serde_json::json!("Error\n    at l (https://duck.ai/dist/duckai-dist/entry.duckai.0257c05c4cc74983b966.js:2:1833090)\n    at async https://duck.ai/dist/duckai-dist/entry.duckai.0257c05c4cc74983b966.js:2:1620812"),
+            );
+            meta_obj.insert("duration".to_string(), serde_json::json!("25"));
         }
     }
 
@@ -267,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_solve_challenge_real_js() {
-        let js = "(async function() { return { server_hashes: ['test1234'], client_hashes: ['dummy_ua'], signals: {}, meta: {} }; })()";
+        let js = "(async function() { return { server_hashes: ['test1234'], client_hashes: [], signals: {}, meta: {} }; })()";
         let js_b64 = BASE64_STANDARD.encode(js.as_bytes());
 
         let result = solve_challenge_sync(&js_b64, None).unwrap();
