@@ -56,6 +56,19 @@ cd duck-proxy
 
 ---
 
+## ✨ Highlights & Key Features
+
+- 🤖 **Native AI Agent IDE Support**: Full multi-turn agent tool execution, file operations, diff editing, and bash execution compatibility for OpenCode, Cursor, and Cline.
+- 🎨 **Duck.ai Native `gpt-image 2.0`**: Generates high-resolution images with official OpenAI C2PA metadata directly inside OpenCode TUI / CLI and via `/v1/images/generations` with zero external fallbacks.
+- ⚡ **Zero-Config 1-Click Launch**: Instant startup on Windows, Linux, and macOS with background daemonization.
+- 🛡️ **Embedded V8 Anomaly Solver**: Integrated JavaScript engine (`deno_core`) automatically solves Duck.ai HTTP 418 challenges on the fly.
+- 🔄 **Automatic Session & Rate-Limit Resilience**: Automatic journey ID rotation and session cookie warming on upstream rate limits.
+- 📦 **Tool Synthesizer & Format Normalization**: Automatically extracts `<tool_call>`, JSON blocks, and code blocks, translating them into executable client tools (`bash`, `apply_patch`).
+- 🌊 **Strict OpenAI SSE Protocol**: Full streaming compliance with `@ai-sdk/openai-compatible` (role delta chunks, stop reason signaling, and UTF-8 multibyte boundary preservation).
+- 🧪 **Comprehensive 40-Scenario Test Suite**: Built-in test harness verifying file ops, surgical edits, context pruning, tools, streaming, and subagent concurrency.
+
+---
+
 ## 📋 Comprehensive Model Catalog
 
 Every model has an **exact official identifier** as well as a **convenient short alias**. Both work identically:
