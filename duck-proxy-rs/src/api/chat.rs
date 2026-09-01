@@ -821,17 +821,25 @@ pub async fn chat_completions(
         .send_chat_request_cascade(&duck_model, &messages, &fallback_chain, is_image_gen)
         .await;
 
+    let user_prompt = req_messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .and_then(|m| m.content.as_ref())
+        .map(|c| c.to_text())
+        .unwrap_or_else(|| "a horse".to_string());
+
     let resp = match duck_result {
         Ok((r, _)) => r,
         Err(e) => {
             if is_image_gen {
-                tracing::warn!("Duck.ai image upstream unavailable ({:?}), fetching high-quality diffusion image fallback...", e);
-                let prompt = messages.first().map(|m| m.content.as_str()).unwrap_or("a horse");
-                if let Some(b64) = fetch_fallback_image(prompt).await {
+                tracing::warn!("Duck.ai image upstream unavailable ({:?}), fetching high-quality diffusion image fallback for prompt: '{}'...", e, user_prompt);
+                if let Some(b64) = fetch_fallback_image(&user_prompt).await {
+                    let filename = derive_image_filename(&user_prompt);
                     if req.stream {
-                        return handle_synthetic_image_streaming(b64, completion_id, created, req.model, has_tools).await;
+                        return handle_synthetic_image_streaming(b64, completion_id, created, req.model, &filename, has_tools).await;
                     } else {
-                        return handle_synthetic_image_non_streaming(b64, completion_id, created, req.model).await;
+                        return handle_synthetic_image_non_streaming(b64, completion_id, created, req.model, &filename).await;
                     }
                 }
             }
@@ -840,10 +848,68 @@ pub async fn chat_completions(
     };
 
     if req.stream {
-        handle_streaming(resp, completion_id, created, req.model, has_tools).await
+        handle_streaming(resp, completion_id, created, req.model, user_prompt, has_tools).await
     } else {
-        handle_non_streaming(resp, completion_id, created, req.model).await
+        handle_non_streaming(resp, completion_id, created, req.model, &user_prompt).await
     }
+}
+
+/// Derives a clean, descriptive image filename from the user's prompt (e.g. "knight_icon.png").
+pub fn derive_image_filename(prompt: &str) -> String {
+    let lower = prompt.to_lowercase();
+    let stopwords = [
+        "can", "you", "u", "please", "gen", "generate", "an", "a", "img", "image",
+        "images", "picture", "photo", "illustration", "of", "draw", "me", "paint",
+        "make", "render", "create", "and", "add", "your", "on", "top", "it", "as", "small",
+        "the", "in", "to", "for", "with", "show", "give", "put"
+    ];
+
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty() && !stopwords.contains(w))
+        .collect();
+
+    let name = if words.is_empty() {
+        "image".to_string()
+    } else {
+        words.iter().take(3).cloned().collect::<Vec<&str>>().join("_")
+    };
+
+    let sanitized: String = name
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+
+    let clean = sanitized.trim_matches('_');
+    if clean.is_empty() {
+        "image.png".to_string()
+    } else {
+        format!("{}.png", clean)
+    }
+}
+
+/// Builds a quiet base64 decoding tool call that writes the image without dumping raw base64 text into the console.
+pub fn build_image_write_tool_call(b64: &str, filename: &str) -> (ToolCall, String) {
+    let temp_id = &uuid::Uuid::new_v4().simple().to_string()[..8];
+    let temp_path = format!("/tmp/.duck_img_{}.b64", temp_id);
+    let _ = std::fs::write(&temp_path, b64);
+
+    let cmd = format!(
+        "base64 -d {} > \"{}\" && rm -f {} && echo \"Image successfully saved to: $(realpath '{}' 2>/dev/null || echo \"$(pwd)/{}\")\"",
+        temp_path, filename, temp_path, filename, filename
+    );
+
+    let call_id = format!("call_{}", temp_id);
+    let tool_call = ToolCall {
+        id: call_id,
+        call_type: "function".to_string(),
+        function: FunctionCall {
+            name: "bash".to_string(),
+            arguments: serde_json::json!({ "command": cmd }).to_string(),
+        },
+    };
+
+    (tool_call, cmd)
 }
 
 /// Fetches a high-quality diffusion image directly from image generation API when upstream is throttled.
@@ -863,22 +929,16 @@ async fn fetch_fallback_image(prompt: &str) -> Option<String> {
     }
 }
 
-/// Synthesizes a non-streaming image generation response containing tool calls to write generated_image.png.
+/// Synthesizes a non-streaming image generation response containing tool calls to write the image.
 async fn handle_synthetic_image_non_streaming(
     b64: String,
     completion_id: String,
     created: i64,
     model: String,
+    filename: &str,
 ) -> Result<Response, AppError> {
-    let cmd = format!("cat << 'EOF' | base64 -d > generated_image.png\n{}\nEOF\necho 'Image successfully generated and saved to generated_image.png'", b64);
-    let tool_calls = vec![ToolCall {
-        id: format!("call_{}", &uuid::Uuid::new_v4().to_string()[..8]),
-        call_type: "function".to_string(),
-        function: FunctionCall {
-            name: "bash".to_string(),
-            arguments: serde_json::json!({ "command": cmd }).to_string(),
-        },
-    }];
+    let (tool_call, _) = build_image_write_tool_call(&b64, filename);
+    let tool_calls = vec![tool_call];
 
     let response = ChatCompletionResponse {
         id: completion_id,
@@ -889,7 +949,7 @@ async fn handle_synthetic_image_non_streaming(
             index: 0,
             message: ResponseMessage {
                 role: "assistant".to_string(),
-                content: Some(format!("I have generated the image for you and saved it to generated_image.png.\n\n![Generated Image](data:image/png;base64,{})", b64)),
+                content: Some(format!("I have generated the image for you and saved it to `{}`.\n\n![Generated Image](data:image/png;base64,{})", filename, b64)),
                 tool_calls: Some(tool_calls),
             },
             finish_reason: "tool_calls".to_string(),
@@ -904,20 +964,22 @@ async fn handle_synthetic_image_non_streaming(
     Ok(Json(response).into_response())
 }
 
-/// Synthesizes a streaming image generation response with tool calls to write generated_image.png.
+/// Synthesizes a streaming image generation response with tool calls to write the image quietly.
 async fn handle_synthetic_image_streaming(
     b64: String,
     completion_id: String,
     created: i64,
     model: String,
+    filename: &str,
     has_tools: bool,
 ) -> Result<Response, AppError> {
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(10);
+    let filename_owned = filename.to_string();
 
     tokio::spawn(async move {
-        let cmd = format!("cat << 'EOF' | base64 -d > generated_image.png\n{}\nEOF\necho 'Image successfully generated and saved to generated_image.png'", b64);
-        let call_id = format!("call_{}", &uuid::Uuid::new_v4().to_string()[..8]);
-        let img_markdown = format!("I have generated the image for you and saved it to generated_image.png.\n\n![Generated Image](data:image/png;base64,{})", b64);
+        let (tool_call, cmd) = build_image_write_tool_call(&b64, &filename_owned);
+        let call_id = tool_call.id;
+        let img_markdown = format!("I have generated the image for you and saved it to `{}`.\n\n![Generated Image](data:image/png;base64,{})", filename_owned, b64);
 
         if !has_tools {
             // Stream pure markdown text
@@ -1050,6 +1112,7 @@ async fn handle_non_streaming(
     completion_id: String,
     created: i64,
     model: String,
+    prompt: &str,
 ) -> Result<Response, AppError> {
     let body = resp.text().await.map_err(|e| {
         AppError::bad_gateway(format!("Failed to read upstream response: {}", e))
@@ -1084,15 +1147,9 @@ async fn handle_non_streaming(
     let mut tool_calls = extract_tool_calls(&accumulated);
     if tool_calls.is_none() && !generated_images.is_empty() {
         let b64 = &generated_images[0];
-        let cmd = format!("cat << 'EOF' | base64 -d > generated_image.png\n{}\nEOF\necho 'Image successfully generated and saved to generated_image.png'", b64);
-        tool_calls = Some(vec![ToolCall {
-            id: format!("call_{}", &uuid::Uuid::new_v4().to_string()[..8]),
-            call_type: "function".to_string(),
-            function: FunctionCall {
-                name: "bash".to_string(),
-                arguments: serde_json::json!({ "command": cmd }).to_string(),
-            },
-        }]);
+        let filename = derive_image_filename(prompt);
+        let (tool_call, _) = build_image_write_tool_call(b64, &filename);
+        tool_calls = Some(vec![tool_call]);
     }
 
     let finish_reason = if tool_calls.is_some() {
@@ -1131,6 +1188,7 @@ async fn handle_streaming(
     completion_id: String,
     created: i64,
     model: String,
+    prompt: String,
     has_tools: bool,
 ) -> Result<Response, AppError> {
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(100);
@@ -1297,15 +1355,9 @@ async fn handle_streaming(
             let mut tool_calls = extract_tool_calls(&accumulated_text);
             if tool_calls.is_none() && !generated_images.is_empty() {
                 let b64 = &generated_images[0];
-                let cmd = format!("cat << 'EOF' | base64 -d > generated_image.png\n{}\nEOF\necho 'Image successfully generated and saved to generated_image.png'", b64);
-                tool_calls = Some(vec![ToolCall {
-                    id: format!("call_{}", &uuid::Uuid::new_v4().to_string()[..8]),
-                    call_type: "function".to_string(),
-                    function: FunctionCall {
-                        name: "bash".to_string(),
-                        arguments: serde_json::json!({ "command": cmd }).to_string(),
-                    },
-                }]);
+                let filename = derive_image_filename(&prompt);
+                let (tool_call, _) = build_image_write_tool_call(b64, &filename);
+                tool_calls = Some(vec![tool_call]);
             }
             if let Some(tool_calls) = tool_calls {
                 // Send role chunk

@@ -89,3 +89,26 @@ fn test_image_generation_intent_detection() {
     let code_msgs = vec![ChatMessage::user("Write a function to calculate Fibonacci in Rust")];
     assert!(!is_image_generation_intent("gpt-5.6-luna", "gpt-5.6-luna", &code_msgs));
 }
+
+#[test]
+fn test_derive_image_filename() {
+    use duck_proxy_rs::api::chat::derive_image_filename;
+
+    assert_eq!(derive_image_filename("can u gen img of a horse"), "horse.png");
+    assert_eq!(derive_image_filename("can u gen img of a knight and add your base url on top of it as small icon"), "knight_base_url.png");
+    assert_eq!(derive_image_filename("generate a picture of futuristic cyberpunk cat"), "futuristic_cyberpunk_cat.png");
+    assert_eq!(derive_image_filename(""), "image.png");
+}
+
+#[test]
+fn test_build_image_write_tool_call() {
+    use duck_proxy_rs::api::chat::build_image_write_tool_call;
+
+    let b64_dummy = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+    let (tool_call, cmd) = build_image_write_tool_call(b64_dummy, "knight_icon.png");
+
+    assert_eq!(tool_call.function.name, "bash");
+    assert!(!cmd.contains(b64_dummy), "Command must NOT contain raw base64 data to avoid console dump");
+    assert!(cmd.contains("knight_icon.png"));
+    assert!(cmd.contains("realpath"));
+}
