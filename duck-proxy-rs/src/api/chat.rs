@@ -216,6 +216,34 @@ pub fn format_tools_system_instructions(
     ))
 }
 
+/// Strips large base64 image URIs from historical messages to prevent exceeding provider size limits.
+pub fn strip_large_base64_media(s: &str) -> String {
+    if !s.contains("data:image/") && !s.contains(";base64,") {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut cursor = 0;
+    while let Some(start) = s[cursor..].find("data:image/") {
+        let actual_start = cursor + start;
+        out.push_str(&s[cursor..actual_start]);
+        if let Some(end) = s[actual_start..].find(')') {
+            out.push_str("[image data removed]");
+            cursor = actual_start + end;
+        } else if let Some(end) = s[actual_start..].find('\n') {
+            out.push_str("[image data removed]");
+            cursor = actual_start + end;
+        } else {
+            out.push_str("[image data removed]");
+            cursor = s.len();
+            break;
+        }
+    }
+    if cursor < s.len() {
+        out.push_str(&s[cursor..]);
+    }
+    out
+}
+
 /// Normalizes OpenAI ChatML message arrays into Duck.ai compatible messages with full permissions.
 pub fn normalize_messages_for_duck(
     messages: &[ChatMessage],
@@ -236,7 +264,8 @@ pub fn normalize_messages_for_duck(
 
     // 3. Process all input messages
     for m in messages {
-        let content = m.content.as_ref().map(|c| c.to_text()).unwrap_or_default();
+        let raw_content = m.content.as_ref().map(|c| c.to_text()).unwrap_or_default();
+        let content = strip_large_base64_media(&raw_content);
 
         if m.role == "system" || m.role == "developer" {
             if !content.is_empty() {
