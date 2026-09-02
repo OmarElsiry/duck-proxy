@@ -16,25 +16,25 @@ REM 1. Check if binary exists, if not build it
 if not exist "%BIN_PATH%" (
     echo [INFO] Release binary not found. Checking for Rust/Cargo...
     where cargo >nul 2>nul
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo [ERROR] Rust and Cargo are not installed!
         echo Please install Rust via:
         echo   1. winget install Rustlang.Rustup
         echo   2. Or download from: https://rustup.rs
-        echo After installing, restart your terminal and run duck.bat again.
+        echo After installing, restart your terminal and run "duck.bat" again.
         pause
         exit /b 1
     )
     net session >nul 2>&1
-    if errorlevel 1 (
+    if !errorlevel! neq 0 (
         echo [INFO] Administrator privileges required for build.
-        echo Please open Command Prompt as administrator, navigate to the duck-proxy directory, and run "duck.bat" again.
+        echo Please open Command Prompt as administrator, navigate to "%REPO_DIR%", and run "duck.bat" again.
         pause
         exit /b 1
     ) else (
         echo [INFO] Building duck-proxy-rs ^(release mode^) [Administrator]...
         cargo build --release --manifest-path "%REPO_DIR%duck-proxy-rs\Cargo.toml"
-        if %errorlevel% neq 0 (
+        if !errorlevel! neq 0 (
             echo [ERROR] Build failed! Please check cargo errors above.
             pause
             exit /b 1
@@ -44,7 +44,7 @@ if not exist "%BIN_PATH%" (
 
 REM 2. Check if port 18080 is already active
 netstat -ano | findstr ":%PORT% " | findstr "LISTENING" >nul 2>nul
-if %errorlevel% equ 0 (
+if !errorlevel! equ 0 (
     echo [STATUS] Duck Proxy is already active on http://127.0.0.1:%PORT%
 ) else (
     echo [STATUS] Starting Duck Proxy on http://127.0.0.1:%PORT%...
