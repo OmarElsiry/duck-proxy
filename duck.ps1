@@ -28,19 +28,30 @@ if (-not (Test-Path $BinPath)) {
             Write-Host "Installing Rustup via winget..." -ForegroundColor Cyan
             winget install --id Rustlang.Rustup --accept-source-agreements --accept-package-agreements
             Write-Host "✅ Rust installed! Please restart PowerShell and run .\duck.ps1 again." -ForegroundColor Green
+            Write-Host ""
             exit 0
         } else {
             Write-Host "❌ Cannot proceed without Rust compiler or pre-built binary." -ForegroundColor Red
+            Write-Host ""
             exit 1
         }
     }
 
-    Write-Host "⚙️ Building duck-proxy-rs in release mode..." -ForegroundColor Cyan
-    $CargoToml = Join-Path $RepoDir "duck-proxy-rs\Cargo.toml"
-    & cargo build --release --manifest-path "$CargoToml"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "❌ Cargo build failed!" -ForegroundColor Red
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $isAdmin) {
+        Write-Host "🔐 Administrator privileges required for build. " -ForegroundColor Yellow
+        Write-Host "   Please open PowerShell as Administrator, navigate to `"$RepoDir`", and run .\duck.ps1 again." -ForegroundColor Yellow
+        Write-Host ""
         exit 1
+    } else {
+        Write-Host "⚙️ Building duck-proxy-rs in release mode (Administrator)..." -ForegroundColor Cyan
+        $CargoToml = Join-Path $RepoDir "duck-proxy-rs\Cargo.toml"
+        & cargo build --release --manifest-path "$CargoToml"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ Cargo build failed!" -ForegroundColor Red
+            Write-Host ""
+            exit 1
+        }
     }
 }
 
