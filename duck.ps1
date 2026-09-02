@@ -42,6 +42,7 @@ if (-not (Test-Path $BinPath)) {
         Write-Host "🔐 Administrator privileges required for build. " -ForegroundColor Yellow
         Write-Host "   Please open PowerShell as Administrator, navigate to `"$RepoDir`", and run .\duck.ps1 again." -ForegroundColor Yellow
         Write-Host ""
+        Read-Host "Press Enter to exit..."
         exit 1
     } else {
         Write-Host "⚙️ Building duck-proxy-rs in release mode (Administrator)..." -ForegroundColor Cyan
