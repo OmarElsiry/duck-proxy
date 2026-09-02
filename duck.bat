@@ -25,12 +25,20 @@ if not exist "%BIN_PATH%" (
         pause
         exit /b 1
     )
-    echo [INFO] Building duck-proxy-rs ^(release mode^)...
-    cargo build --release --manifest-path "%REPO_DIR%duck-proxy-rs\Cargo.toml"
-    if %errorlevel% neq 0 (
-        echo [ERROR] Build failed! Please check cargo errors above.
+    net session >nul 2>&1
+    if errorlevel 1 (
+        echo [INFO] Administrator privileges required for build.
+        echo Please open Command Prompt as administrator, navigate to the duck-proxy directory, and run "duck.bat" again.
         pause
         exit /b 1
+    ) else (
+        echo [INFO] Building duck-proxy-rs ^(release mode^) [Administrator]...
+        cargo build --release --manifest-path "%REPO_DIR%duck-proxy-rs\Cargo.toml"
+        if %errorlevel% neq 0 (
+            echo [ERROR] Build failed! Please check cargo errors above.
+            pause
+            exit /b 1
+        )
     )
 )
 
