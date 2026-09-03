@@ -164,7 +164,90 @@ Add this block to your `~/.continue/config.json`:
 
 ---
 
-### 5. Aider CLI (Terminal Pair Programming)
+### 5. VS Code — Custom Endpoint (BYOK)
+
+Add duck proxy to your VS Code user `chatLanguageModels.json`:
+- Windows: `%APPDATA%\Code\User\chatLanguageModels.json`
+- macOS: `$HOME/Library/Application Support/Code/User/chatLanguageModels.json`
+- Linux: `$HOME/.config/Code/User/chatLanguageModels.json`
+
+<details>
+<summary><code>chatLanguageModels.json</code> — click to view 👈</summary>
+
+```json
+[
+  {
+    "name": "Duck.ai Proxy",
+    "vendor": "customendpoint",
+    "apiKey": "duck-proxy",
+    "apiType": "chat-completions",
+    "models": [
+      {
+        "id": "gpt-5.6-luna",
+        "name": "Duck.ai Proxy / GPT-5.6 Luna",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 922000,
+        "maxOutputTokens": 128000,
+        "thinking": true,
+        "supportsReasoningEffort": ["none","low"],
+        "reasoningEffortFormat": "chat-completions"
+      },
+      {
+        "id": "gpt-5.4-mini",
+        "name": "Duck.ai Proxy / GPT-5.4 mini",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 272000,
+        "maxOutputTokens": 128000,
+        "thinking": true,
+        "supportsReasoningEffort": ["none","low"],
+        "reasoningEffortFormat": "chat-completions"
+      },
+      {
+        "id": "claude-haiku-4-5",
+        "name": "Duck.ai Proxy / Claude Haiku 4.5",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 136000,
+        "maxOutputTokens": 64000,
+        "thinking": true,
+        "supportsReasoningEffort": ["none","low"],
+        "reasoningEffortFormat": "chat-completions"
+      },
+      {
+        "id": "mistral-small-2603",
+        "name": "Duck.ai Proxy / Mistral Small 4",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": false,
+        "maxInputTokens": 256000,
+        "maxOutputTokens": 256000
+      },
+      {
+        "id": "tinfoil/gemma4-31b",
+        "name": "Duck.ai Proxy / Gemma 4 31B",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 229376,
+        "maxOutputTokens": 32768,
+        "thinking": true,
+        "supportsReasoningEffort":["none", "low"],
+        "reasoningEffortFormat": "chat-completions"
+      }
+    ]
+  }
+]
+```
+</details>
+
+---
+
+### 6. Aider CLI (Terminal Pair Programming)
 ```bash
 export OPENAI_API_BASE="http://localhost:18080/v1"
 export OPENAI_API_KEY="duck-proxy"
@@ -175,7 +258,7 @@ aider --model openai/gpt-5.6-luna
 
 ---
 
-### 6. Zed Editor
+### 7. Zed Editor
 Add to `~/.config/zed/settings.json`:
 
 ```json
@@ -194,7 +277,7 @@ Add to `~/.config/zed/settings.json`:
 
 ---
 
-### 7. Python (OpenAI SDK)
+### 8. Python (OpenAI SDK)
 ```python
 from openai import OpenAI
 
@@ -216,7 +299,7 @@ for chunk in stream:
 
 ---
 
-### 8. Native `gpt-image 2.0` Image Generation
+### 9. Native `gpt-image 2.0` Image Generation
 
 #### In OpenCode CLI / TUI (Auto-Save to Workspace)
 Run image generation directly in your terminal; OpenCode decodes the base64 stream, writes the image to disk, and displays the full resolved path:

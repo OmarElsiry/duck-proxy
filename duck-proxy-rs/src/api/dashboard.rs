@@ -14,6 +14,7 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
+      color-scheme: dark;
       --bg: #000000;
       --surface: #0c0c0c;
       --surface-raised: #141414;
@@ -21,7 +22,7 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
       --border: #222222;
       --border-focus: #444444;
       --text: #ffffff;
-      --text-muted: #888888;
+      --text-muted: #aaaaaa;
       --text-dim: #555555;
       --accent: #ffffff;
       --accent-inv: #000000;
@@ -69,6 +70,15 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
       line-height: 1.5;
       min-height: 100vh;
       -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
     }
 
     /* Navigation Bar */
@@ -549,6 +559,11 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
       margin-bottom: 12px;
     }
 
+    .ide-desc-box a {
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
     .code-block {
       background: var(--code-bg);
       border: 1px solid var(--border);
@@ -875,6 +890,7 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
         <button class="ide-tab-btn active" id="tab-btn-cursor" onclick="selectIde('cursor')">Cursor IDE</button>
         <button class="ide-tab-btn" id="tab-btn-continue" onclick="selectIde('continue')">VS Code (Continue)</button>
         <button class="ide-tab-btn" id="tab-btn-cline" onclick="selectIde('cline')">VS Code (Cline / Roo)</button>
+        <button class="ide-tab-btn" id="tab-btn-customendpoint" onclick="selectIde('customendpoint')">VS Code (Custom Endpoint)</button>
         <button class="ide-tab-btn" id="tab-btn-aider" onclick="selectIde('aider')">Aider CLI</button>
         <button class="ide-tab-btn" id="tab-btn-zed" onclick="selectIde('zed')">Zed Editor</button>
         <button class="ide-tab-btn" id="tab-btn-windsurf" onclick="selectIde('windsurf')">Windsurf</button>
@@ -941,6 +957,86 @@ Models:   gpt5, claude, mistral</pre>
 Base URL: http://localhost:18080/v1
 API Key:  duck-proxy
 Model ID: gpt5</pre>
+        </div>
+      </div>
+
+      <!-- Custom Endpoint Panel -->
+      <div class="ide-content-panel" id="ide-panel-customendpoint" style="display:none;">
+        <div class="ide-desc-box">
+          Add duck proxy to your VS Code user <code>chatLanguageModels.json</code>:<br>
+          &nbsp;&nbsp;- Windows: <code>%APPDATA%\Code\User\chatLanguageModels.json</code><br>
+          &nbsp;&nbsp;- macOS: <code>$HOME/Library/Application Support/Code/User/chatLanguageModels.json</code><br>
+          &nbsp;&nbsp;- Linux: <code>$HOME/.config/Code/User/chatLanguageModels.json</code>
+        </div>
+        <div class="code-block">
+          <button class="copy-btn-float" onclick="copySnippet('customendpoint-snip')">Copy JSON</button>
+          <pre id="customendpoint-snip">[
+  {
+    "name": "Duck.ai",
+    "vendor": "customendpoint",
+    "apiKey": "duck-proxy",
+    "apiType": "chat-completions",
+    "models": [
+      {
+        "id": "gpt-5.6-luna",
+        "name": "Duck.ai Proxy / GPT-5.6 Luna",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 922000,
+        "maxOutputTokens": 128000,
+        "thinking": true,
+        "supportsReasoningEffort": ["none","low"],
+        "reasoningEffortFormat": "chat-completions"
+      },
+      {
+        "id": "gpt-5.4-mini",
+        "name": "Duck.ai Proxy / GPT-5.4 mini",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 272000,
+        "maxOutputTokens": 128000,
+        "thinking": true,
+        "supportsReasoningEffort": ["none","low"],
+        "reasoningEffortFormat": "chat-completions"
+      },
+      {
+        "id": "claude-haiku-4-5",
+        "name": "Duck.ai Proxy / Claude Haiku 4.5",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 136000,
+        "maxOutputTokens": 64000,
+        "thinking": true,
+        "supportsReasoningEffort": ["none","low"],
+        "reasoningEffortFormat": "chat-completions"
+      },
+      {
+        "id": "mistral-small-2603",
+        "name": "Duck.ai Proxy / Mistral Small 4",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": false,
+        "maxInputTokens": 256000,
+        "maxOutputTokens": 256000
+      },
+      {
+        "id": "tinfoil/gemma4-31b",
+        "name": "Duck.ai Proxy / Gemma 4 31B",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 229376,
+        "maxOutputTokens": 32768,
+        "thinking": true,
+        "supportsReasoningEffort": ["none", "low"],
+        "reasoningEffortFormat": "chat-completions"
+      }
+    ]
+  }
+]</pre>
         </div>
       </div>
 
