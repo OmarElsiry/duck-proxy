@@ -22,19 +22,25 @@ use crate::state::AppState;
 // Omni-Permissions Directive
 // ---------------------------------------------------------------------------
 
-pub const OMNI_PERMISSIONS_PROMPT: &str = r#"[ENVIRONMENT & PERMISSION DIRECTIVES]
-You are an autonomous AI coding assistant running inside OpenCode CLI / IDE with FULL, UNRESTRICTED PERMISSIONS across all system capabilities:
-- REPOSITORY & FILE ACCESS: Full read/write/edit/create/delete access to all files and directories in the workspace.
-- COMMAND & TERMINAL EXECUTION: Full permission to execute any terminal or bash commands.
+pub const OMNI_PERMISSIONS_PROMPT: &str = r#"[DEVELOPMENT ENVIRONMENT & TOOL CAPABILITIES]
+The client environment provides full development capabilities:
+- REPOSITORY & FILE ACCESS: Full read/write/edit/create/delete access across workspace and entire filesystem.
+- COMMAND & TERMINAL EXECUTION: Full permission to execute bash commands (ls, find, cat, python3, grep).
 - VERSION CONTROL & RELEASE: Full permission to manage git, commits, branches, and releases.
 
-CRITICAL INSTRUCTIONS:
-1. When asked to create, write, edit, or modify files or run commands, you MUST ALWAYS call the appropriate tool directly using the required tool format:
-   <tool_call>
-   {"name": "tool_name", "arguments": {"param": "value"}}
-   </tool_call>
-2. NEVER state that you cannot create files or that no filesystem tool is available. Tools ARE available and you must use them.
-3. NEVER ask the user to create the file manually or tell the user how to create it. Directly output the <tool_call>."#;
+TOOL USAGE PROTOCOL:
+When asked to perform actions, inspect files, or execute commands, call the appropriate tool:
+<tool_call>
+{"name": "bash", "arguments": {"command": "<command_to_run>"}}
+</tool_call>
+Or output a ```bash code block containing the command.
+The client system will execute the command on the user machine and provide the result back to you.
+NEVER say you cannot run commands or access files; the client system executes all commands for you."#;
+
+
+
+
+
 
 // ---------------------------------------------------------------------------
 // Request types
@@ -171,36 +177,80 @@ impl MessageContent {
     }
 }
 
-/// Formats tool and function definitions into clear prompt instructions.
+/// Formats tool and function definitions into clear, compact prompt instructions.
 pub fn format_tools_system_instructions(
     tools: Option<&[ToolDefinition]>,
     functions: Option<&[FunctionDefinition]>,
 ) -> Option<String> {
     let mut tool_lines = Vec::new();
 
+    // Priority ordering for core tools
+    let priority = |name: &str| -> usize {
+        match name {
+            "bash" => 0,
+            "read" => 1,
+            "apply_patch" => 2,
+            "edit" => 3,
+            "write" => 4,
+            "glob" => 5,
+            "grep" => 6,
+            "task" => 7,
+            "webfetch" => 8,
+            _ => 10,
+        }
+    };
+
     if let Some(tools) = tools {
-        for t in tools {
-            let desc = t.function.description.as_deref().unwrap_or("No description");
-            let params = t.function.parameters.as_ref()
-                .map(|p| serde_json::to_string(p).unwrap_or_else(|_| "{}".to_string()))
-                .unwrap_or_else(|| "{}".to_string());
-            tool_lines.push(format!(
-                "- Tool: {}\n  Description: {}\n  Parameters Schema: {}",
-                t.function.name, desc, params
-            ));
+        let mut sorted_tools: Vec<_> = tools.iter().collect();
+        sorted_tools.sort_by_key(|t| priority(&t.function.name));
+
+        for t in sorted_tools {
+            let name = &t.function.name;
+            let desc = t.function.description.as_deref().unwrap_or("Execute tool");
+            let desc_short = desc.split('.').next().unwrap_or(desc).trim();
+
+            let mut params_summary = Vec::new();
+            if let Some(p) = &t.function.parameters {
+                if let Some(props) = p.get("properties").and_then(|v| v.as_object()) {
+                    let req_fields: Vec<&str> = p.get("required")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|x| x.as_str()).collect())
+                        .unwrap_or_default();
+
+                    for (k, v) in props {
+                        let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("string");
+                        let is_req = req_fields.contains(&k.as_str());
+                        if is_req {
+                            params_summary.push(format!("{}: {}", k, typ));
+                        } else {
+                            params_summary.push(format!("{}?: {}", k, typ));
+                        }
+                    }
+                }
+            }
+
+            let sig = if params_summary.is_empty() {
+                format!("{name}()")
+            } else {
+                format!("{name}({})", params_summary.join(", "))
+            };
+
+            tool_lines.push(format!("- Tool `{}`: {}", sig, desc_short));
+
+            if tool_lines.len() >= 12 {
+                break;
+            }
         }
     }
 
     if let Some(functions) = functions {
         for f in functions {
-            let desc = f.description.as_deref().unwrap_or("No description");
-            let params = f.parameters.as_ref()
-                .map(|p| serde_json::to_string(p).unwrap_or_else(|_| "{}".to_string()))
-                .unwrap_or_else(|| "{}".to_string());
-            tool_lines.push(format!(
-                "- Function: {}\n  Description: {}\n  Parameters Schema: {}",
-                f.name, desc, params
-            ));
+            let desc = f.description.as_deref().unwrap_or("Execute function");
+            let desc_short = desc.split('.').next().unwrap_or(desc).trim();
+            tool_lines.push(format!("- Function `{}`: {}", f.name, desc_short));
+            if tool_lines.len() >= 15 {
+                break;
+            }
         }
     }
 
@@ -209,10 +259,11 @@ pub fn format_tools_system_instructions(
     }
 
     Some(format!(
-        "# AVAILABLE TOOLS\nYou have access to the following tools in this workspace:\n\n{}\n\n# TOOL INVOCATION FORMAT\nTo call a tool, output:\n<tool_call>\n{{\"name\": \"<tool_name>\", \"arguments\": {{<args_json>}}}}\n</tool_call>\n\nCRITICAL: Execute the user request immediately by invoking the appropriate tool using the <tool_call> format.",
-        tool_lines.join("\n\n")
+        "# AVAILABLE TOOLS\nYou can and MUST invoke tools to perform real actions:\n\n{}\n\n# TOOL INVOCATION FORMAT\nTo call a tool, output:\n<tool_call>\n{{\"name\": \"<tool_name>\", \"arguments\": {{<args_json>}}}}\n</tool_call>\n\nExecute the user request immediately by invoking the appropriate tool.",
+        tool_lines.join("\n")
     ))
 }
+
 
 /// Strips large base64 image URIs from historical messages to prevent exceeding provider size limits.
 pub fn strip_large_base64_media(s: &str) -> String {
@@ -348,7 +399,30 @@ pub fn normalize_messages_for_duck(
         }
     }
 
-    normalized
+    // Merge consecutive messages with identical roles so Duck.ai always receives strict alternating user -> assistant -> user
+    let mut merged: Vec<DuckChatMessage> = Vec::new();
+    for msg in normalized {
+        if let Some(last) = merged.last_mut() {
+            if last.role == msg.role {
+                last.content.push_str("\n\n");
+                last.content.push_str(&msg.content);
+                continue;
+            }
+        }
+        merged.push(msg);
+    }
+
+    // Ensure the first message is a user message
+    if let Some(first) = merged.first() {
+        if first.role != "user" {
+            merged.insert(0, DuckChatMessage {
+                role: "user".to_string(),
+                content: "Hello. Please assist with the following conversation.".to_string(),
+            });
+        }
+    }
+
+    merged
 }
 
 /// Helper to clean code fences from JSON strings
@@ -455,39 +529,73 @@ pub fn extract_tool_calls(text: &str) -> Option<Vec<ToolCall>> {
             }
         }
 
-        if let Some(code_start) = text.find("```") {
-            let code_rest = &text[code_start + 3..];
+        let mut curr_idx = 0;
+        while let Some(start_pos) = text[curr_idx..].find("```") {
+            let abs_start = curr_idx + start_pos + 3;
+            let code_rest = &text[abs_start..];
+            let first_line = code_rest.lines().next().unwrap_or("").trim().to_lowercase();
             let code_body = if let Some(newline) = code_rest.find('\n') {
                 &code_rest[newline + 1..]
             } else {
                 code_rest
             };
-            if let Some(code_end) = code_body.rfind("```") {
-                let content = code_body[..code_end].trim();
-                if !content.is_empty() {
-                    let mut cleaned_lines: Vec<&str> = Vec::new();
-                    for line in content.lines() {
-                        let trimmed = line.trim();
-                        if trimmed.starts_with("cat <<") || trimmed.starts_with("cat >") || trimmed == "EOF" || trimmed == "EOF;" {
-                            continue;
-                        }
-                        cleaned_lines.push(line);
-                    }
-                    let cleaned_content = cleaned_lines.join("\n");
+            if let Some(end_pos) = code_body.find("```") {
+                let content = code_body[..end_pos].trim();
+                let end_abs = (code_body.as_ptr() as usize - text.as_ptr() as usize) + end_pos + 3;
+                curr_idx = end_abs;
 
-                    tool_calls.push(ToolCall {
-                        id: format!("call_{}", uuid::Uuid::new_v4().simple()),
-                        call_type: "function".to_string(),
-                        function: FunctionCall {
-                            name: "bash".to_string(),
-                            arguments: serde_json::json!({
-                                "command": format!("cat << 'EOF' > {}\n{}\nEOF", target_filename, cleaned_content)
-                            }).to_string(),
-                        },
-                    });
+                if !content.is_empty() {
+                    if first_line == "bash" || first_line == "sh" || first_line == "shell" {
+                        tool_calls.push(ToolCall {
+                            id: format!("call_{}", uuid::Uuid::new_v4().simple()),
+                            call_type: "function".to_string(),
+                            function: FunctionCall {
+                                name: "bash".to_string(),
+                                arguments: serde_json::json!({
+                                    "command": content
+                                }).to_string(),
+                            },
+                        });
+                    } else if first_line != "text" && first_line != "txt" && first_line != "output" && first_line != "console" && first_line != "terminal" && first_line != "expected" {
+                        // Extract filename from the first line comment if present (e.g. # check_thesis.py)
+                        let mut block_filename = target_filename.clone();
+                        let first_code_line = content.lines().next().unwrap_or("").trim();
+                        if first_code_line.starts_with("# ") || first_code_line.starts_with("// ") {
+                            let candidate = first_code_line.trim_start_matches("# ").trim_start_matches("// ").trim();
+                            if candidate.ends_with(".py") || candidate.ends_with(".rs") || candidate.ends_with(".js") || candidate.ends_with(".ts") || candidate.ends_with(".json") || candidate.ends_with(".txt") || candidate.ends_with(".md") {
+                                block_filename = candidate.to_string();
+                            }
+                        }
+
+                        let mut cleaned_lines: Vec<&str> = Vec::new();
+                        for line in content.lines() {
+                            let trimmed = line.trim();
+                            if trimmed.starts_with("cat <<") || trimmed.starts_with("cat >") || trimmed == "EOF" || trimmed == "EOF;" {
+                                continue;
+                            }
+                            cleaned_lines.push(line);
+                        }
+                        let cleaned_content = cleaned_lines.join("\n");
+
+                        tool_calls.push(ToolCall {
+                            id: format!("call_{}", uuid::Uuid::new_v4().simple()),
+                            call_type: "function".to_string(),
+                            function: FunctionCall {
+                                name: "bash".to_string(),
+                                arguments: serde_json::json!({
+                                    "command": format!("cat << 'EOF' > {}\n{}\nEOF", block_filename, cleaned_content)
+                                }).to_string(),
+                            },
+                        });
+                    }
+
                 }
+            } else {
+                break;
             }
         }
+
+
     }
 
     // Normalize any "write" or "write_file" tool calls to "bash" for OpenCode CLI execution
@@ -606,15 +714,14 @@ pub struct FunctionCallChunk {
 // ---------------------------------------------------------------------------
 
 pub fn is_image_generation_intent(model: &str, raw_model: &str, messages: &[ChatMessage]) -> bool {
-    if model == "image-generation"
-        || model == "image"
-        || raw_model.to_lowercase().contains("image")
-        || raw_model.to_lowercase().contains("diffusion")
-    {
-        return true;
+    // If the last message in the conversation is a tool response (the image was already saved by client),
+    // or if the assistant already responded after the user's prompt, don't generate again!
+    if let Some(last_msg) = messages.last() {
+        if last_msg.role == "tool" || last_msg.role == "function" {
+            return false;
+        }
     }
 
-    // If an assistant message or tool message already completed/responded to the user's image request, don't generate again
     let user_pos = messages.iter().rposition(|m| m.role == "user");
     let assistant_pos = messages.iter().rposition(|m| m.role == "assistant");
     let tool_pos = messages.iter().rposition(|m| m.role == "tool" || m.role == "function");
@@ -633,6 +740,15 @@ pub fn is_image_generation_intent(model: &str, raw_model: &str, messages: &[Chat
     } else {
         return false;
     }
+
+    if model == "image-generation"
+        || model == "image"
+        || raw_model.to_lowercase().contains("image")
+        || raw_model.to_lowercase().contains("diffusion")
+    {
+        return true;
+    }
+
 
     if let Some(last_msg) = messages.iter().rfind(|m| m.role == "user") {
         let text = last_msg
@@ -780,7 +896,7 @@ pub async fn chat_completions(
     }
 
     // Resolve model
-    let duck_model = state
+    let raw_duck_model = state
         .config
         .resolve_duck_model(&req.model)
         .ok_or_else(|| {
@@ -792,7 +908,14 @@ pub async fn chat_completions(
         })?
         .to_string();
 
-    let is_image_gen = is_image_generation_intent(&duck_model, &req.model, &req_messages);
+    let is_image_gen = is_image_generation_intent(&raw_duck_model, &req.model, &req_messages);
+
+    let duck_model = if raw_duck_model == "image-generation" {
+        "gpt-5.6-luna".to_string()
+    } else {
+        raw_duck_model
+    };
+
 
     // Convert & normalize messages with full permissions & tool definitions
     let messages = if is_image_gen {
@@ -820,7 +943,9 @@ pub async fn chat_completions(
         )
     };
 
+    tracing::info!("OpenCode requested tools: {:?}", req.tools.as_ref().map(|t| t.iter().map(|x| &x.function.name).collect::<Vec<_>>()));
     tracing::info!("Duck.ai prompt (is_image_gen={}): count={}, first={}", is_image_gen, messages.len(), messages.first().map(|m| &m.content[..m.content.len().min(500)]).unwrap_or(""));
+
 
     let fallback_chain = if is_image_gen {
         // Image generation on Duck.ai only works with OpenAI models (gpt-5.6-luna, gpt-5.4-mini)
@@ -1108,6 +1233,10 @@ async fn handle_streaming(
         let mut buffer = String::new();
         let mut first_chunk = true;
         let mut generated_images: Vec<String> = Vec::new();
+        let mut accumulated_tokens = String::new();
+        let mut inside_tool_call = false;
+
+        let mut tag_buffer = String::new();
 
         while let Some(chunk_res) = byte_stream.next().await {
             match chunk_res {
@@ -1122,6 +1251,91 @@ async fn handle_streaming(
                             if let Some(sse_event) = parse_sse_line(&line) {
                                 match sse_event {
                                     SseEvent::Token(token) => {
+                                        accumulated_tokens.push_str(&token);
+
+                                        if inside_tool_call {
+                                            // Silently accumulate tool call body
+                                            continue;
+                                        }
+
+                                        if token.contains("<tool_call") || accumulated_tokens.contains("<tool_call") {
+                                            inside_tool_call = true;
+                                            tag_buffer.clear();
+                                            continue;
+                                        }
+
+                                        // Buffer potential starting tag `<tool_call`
+                                        if tag_buffer.is_empty() && (token.starts_with('<') || accumulated_tokens.starts_with('<')) {
+                                            tag_buffer.push_str(&token);
+                                            if tag_buffer.contains("<tool_call") {
+                                                inside_tool_call = true;
+                                                tag_buffer.clear();
+                                            } else if tag_buffer.len() >= 15 || tag_buffer.contains('>') {
+                                                // Not a tool call tag, flush buffer
+                                                let flushed = std::mem::take(&mut tag_buffer);
+                                                let role = if first_chunk {
+                                                    first_chunk = false;
+                                                    Some("assistant".to_string())
+                                                } else {
+                                                    None
+                                                };
+                                                let delta = Delta {
+                                                    role,
+                                                    content: Some(flushed),
+                                                    tool_calls: None,
+                                                };
+                                                let chunk = ChatCompletionChunk {
+                                                    id: completion_id.clone(),
+                                                    object: "chat.completion.chunk".to_string(),
+                                                    created,
+                                                    model: model.clone(),
+                                                    choices: vec![ChunkChoice {
+                                                        index: 0,
+                                                        delta,
+                                                        finish_reason: None,
+                                                    }],
+                                                };
+                                                if let Ok(json) = serde_json::to_string(&chunk) {
+                                                    let _ = tx.send(Ok(Event::default().data(json))).await;
+                                                }
+                                            }
+                                            continue;
+                                        } else if !tag_buffer.is_empty() {
+                                            tag_buffer.push_str(&token);
+                                            if tag_buffer.contains("<tool_call") {
+                                                inside_tool_call = true;
+                                                tag_buffer.clear();
+                                            } else if tag_buffer.len() >= 15 || tag_buffer.contains('>') {
+                                                let flushed = std::mem::take(&mut tag_buffer);
+                                                let role = if first_chunk {
+                                                    first_chunk = false;
+                                                    Some("assistant".to_string())
+                                                } else {
+                                                    None
+                                                };
+                                                let delta = Delta {
+                                                    role,
+                                                    content: Some(flushed),
+                                                    tool_calls: None,
+                                                };
+                                                let chunk = ChatCompletionChunk {
+                                                    id: completion_id.clone(),
+                                                    object: "chat.completion.chunk".to_string(),
+                                                    created,
+                                                    model: model.clone(),
+                                                    choices: vec![ChunkChoice {
+                                                        index: 0,
+                                                        delta,
+                                                        finish_reason: None,
+                                                    }],
+                                                };
+                                                if let Ok(json) = serde_json::to_string(&chunk) {
+                                                    let _ = tx.send(Ok(Event::default().data(json))).await;
+                                                }
+                                            }
+                                            continue;
+                                        }
+
                                         let role = if first_chunk {
                                             first_chunk = false;
                                             Some("assistant".to_string())
@@ -1151,6 +1365,7 @@ async fn handle_streaming(
                                         }
                                     }
                                     SseEvent::ImageData(b64) => {
+
                                         generated_images.push(b64);
                                     }
                                     SseEvent::Done => {
@@ -1173,32 +1388,39 @@ async fn handle_streaming(
             if let Some(sse_event) = parse_sse_line(&buffer) {
                 match sse_event {
                     SseEvent::Token(token) => {
-                        let role = if first_chunk {
-                            first_chunk = false;
-                            Some("assistant".to_string())
-                        } else {
-                            None
-                        };
+                        accumulated_tokens.push_str(&token);
+                        if !inside_tool_call && (token.contains("<tool_call") || accumulated_tokens.contains("<tool_call>")) {
+                            inside_tool_call = true;
+                        }
 
-                        let delta = Delta {
-                            role,
-                            content: Some(token),
-                            tool_calls: None,
-                        };
+                        if !inside_tool_call {
+                            let role = if first_chunk {
+                                first_chunk = false;
+                                Some("assistant".to_string())
+                            } else {
+                                None
+                            };
 
-                        let chunk = ChatCompletionChunk {
-                            id: completion_id.clone(),
-                            object: "chat.completion.chunk".to_string(),
-                            created,
-                            model: model.clone(),
-                            choices: vec![ChunkChoice {
-                                index: 0,
-                                delta,
-                                finish_reason: None,
-                            }],
-                        };
-                        if let Ok(json) = serde_json::to_string(&chunk) {
-                            let _ = tx.send(Ok(Event::default().data(json))).await;
+                            let delta = Delta {
+                                role,
+                                content: Some(token),
+                                tool_calls: None,
+                            };
+
+                            let chunk = ChatCompletionChunk {
+                                id: completion_id.clone(),
+                                object: "chat.completion.chunk".to_string(),
+                                created,
+                                model: model.clone(),
+                                choices: vec![ChunkChoice {
+                                    index: 0,
+                                    delta,
+                                    finish_reason: None,
+                                }],
+                            };
+                            if let Ok(json) = serde_json::to_string(&chunk) {
+                                let _ = tx.send(Ok(Event::default().data(json))).await;
+                            }
                         }
                     }
                     SseEvent::ImageData(b64) => {
@@ -1209,10 +1431,38 @@ async fn handle_streaming(
             }
         }
 
+        // Extract tool calls from accumulated text
+        let mut tool_calls = extract_tool_calls(&accumulated_tokens);
+        tracing::info!(
+            "handle_streaming finished: accumulated_len={}, accumulated_preview={:?}, tool_calls={:?}",
+            accumulated_tokens.len(),
+            &accumulated_tokens[..accumulated_tokens.len().min(300)],
+            tool_calls.as_ref().map(|c| c.len())
+        );
+
+
         if !generated_images.is_empty() {
             let b64 = generated_images.concat();
             let filename = derive_image_filename(&prompt_owned);
-            let (tool_call, _) = build_image_write_tool_call(&b64, &filename);
+            let (image_tool_call, _) = build_image_write_tool_call(&b64, &filename);
+            let mut calls = tool_calls.unwrap_or_default();
+            calls.push(image_tool_call);
+            tool_calls = Some(calls);
+        }
+
+        if let Some(calls) = tool_calls.filter(|c| !c.is_empty()) {
+            let tool_chunks: Vec<ToolCallChunk> = calls.into_iter().enumerate().map(|(idx, tc)| {
+                ToolCallChunk {
+                    index: idx as u32,
+                    id: Some(tc.id),
+
+                    call_type: Some(tc.call_type),
+                    function: FunctionCallChunk {
+                        name: Some(tc.function.name),
+                        arguments: Some(tc.function.arguments),
+                    },
+                }
+            }).collect();
 
             let role = if first_chunk {
                 Some("assistant".to_string())
@@ -1220,20 +1470,10 @@ async fn handle_streaming(
                 None
             };
 
-            let tool_chunk = ToolCallChunk {
-                index: 0,
-                id: Some(tool_call.id),
-                call_type: Some(tool_call.call_type),
-                function: FunctionCallChunk {
-                    name: Some(tool_call.function.name),
-                    arguments: Some(tool_call.function.arguments),
-                },
-            };
-
             let delta = Delta {
                 role,
                 content: None,
-                tool_calls: Some(vec![tool_chunk]),
+                tool_calls: Some(tool_chunks),
             };
 
             let chunk = ChatCompletionChunk {
@@ -1271,6 +1511,7 @@ async fn handle_streaming(
                 let _ = tx.send(Ok(Event::default().data(json))).await;
             }
         }
+
 
         let _ = tx.send(Ok(Event::default().data("[DONE]"))).await;
     });
@@ -1334,9 +1575,10 @@ mod tests {
         let normalized = normalize_messages_for_duck(&messages, Some(&tools), None);
 
         assert_eq!(normalized.len(), 1);
-        assert!(normalized[0].content.contains("Tool: edit_file"));
+        assert!(normalized[0].content.contains("Tool `edit_file"));
         assert!(normalized[0].content.contains("Edits a file at the given path"));
         assert!(normalized[0].content.contains("<tool_call>"));
+
     }
 
     #[test]

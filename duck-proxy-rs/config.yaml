@@ -2,7 +2,10 @@ server:
   host: "0.0.0.0"
   port: 18080
 
-auto_fallback: false
+virtual_users_count: 5
+auto_rotate_virtual_users: true
+auto_fallback: true
+
 
 model_list:
   # Official Exact Model Identifiers

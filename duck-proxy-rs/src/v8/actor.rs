@@ -9,8 +9,9 @@ use deno_core::{JsRuntime, RuntimeOptions};
 use sha2::{Sha256, Digest};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::duck::client::USER_AGENT;
+use crate::duck::USER_AGENT;
 use crate::v8::stubs::{extract_html_lookup, generate_browser_stubs, wrap_challenge_code};
+
 
 /// A challenge request sent to the V8 actor.
 pub struct ChallengeRequest {

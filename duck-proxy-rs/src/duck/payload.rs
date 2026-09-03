@@ -35,26 +35,7 @@ pub fn build_chat_payload(
         }
     };
 
-    let mut safe_messages = messages;
-    // Duck.ai free tier rejects payloads exceeding 8,000 characters with ERR_CONVERSATION_LIMIT
-    const MAX_TOTAL_CHARS: usize = 7500;
-    let mut total_chars: usize = safe_messages.iter().map(|m| m.content.len()).sum();
-    if total_chars > MAX_TOTAL_CHARS {
-        // Drop older history messages first
-        while safe_messages.len() > 1 && total_chars > MAX_TOTAL_CHARS {
-            let removed = safe_messages.remove(0);
-            total_chars = total_chars.saturating_sub(removed.content.len());
-        }
-        // If single remaining message still exceeds limit, truncate from the beginning to preserve the prompt at the end
-        if total_chars > MAX_TOTAL_CHARS && !safe_messages.is_empty() {
-            let excess = total_chars - MAX_TOTAL_CHARS;
-            let current = &safe_messages[0].content;
-            if current.len() > excess {
-                let start_idx = current.char_indices().nth(excess).map(|(i, _)| i).unwrap_or(excess);
-                safe_messages[0].content = current[start_idx..].to_string();
-            }
-        }
-    }
+    let safe_messages = sanitize_and_fit_messages(messages);
 
     DuckChatRequest {
         model: duck_model.to_string(),
@@ -73,6 +54,72 @@ pub fn build_chat_payload(
         },
     }
 }
+
+/// Maximum total character budget for Duck.ai payloads to prevent ERR_CONVERSATION_LIMIT.
+pub const MAX_TOTAL_CHARS: usize = 7500;
+
+/// Sanitizes and smartly trims conversation turns to fit within Duck.ai's context window.
+/// Preserves critical system instructions/environment directives at the head and latest user prompt at the tail.
+pub fn sanitize_and_fit_messages(messages: Vec<DuckChatMessage>) -> Vec<DuckChatMessage> {
+    if messages.is_empty() {
+        return messages;
+    }
+
+    let mut msgs = messages;
+    let total_chars: usize = msgs.iter().map(|m| m.content.len()).sum();
+    if total_chars <= MAX_TOTAL_CHARS {
+        return msgs;
+    }
+
+    // If there is only 1 message, smart truncate the middle if necessary
+    if msgs.len() == 1 {
+        let content = &msgs[0].content;
+        if content.len() > MAX_TOTAL_CHARS {
+            let head_len = 2500.min(content.len());
+            let tail_len = 4800.min(content.len().saturating_sub(head_len));
+            let head_idx = content.char_indices().nth(head_len).map(|(i, _)| i).unwrap_or(head_len);
+            let head = &content[..head_idx];
+            let tail_start = content.len() - tail_len;
+            let tail_idx = content.char_indices().find(|(i, _)| *i >= tail_start).map(|(i, _)| i).unwrap_or(tail_start);
+            let tail = &content[tail_idx..];
+            msgs[0].content = format!("{}\n\n...[content trimmed to fit context limit]...\n\n{}", head, tail);
+        }
+        return msgs;
+    }
+
+    // When there are multiple messages:
+    // msgs[0] has system directives, msgs[last] has the current request.
+    // Drop intermediate turns (msgs[1..len-1]) from oldest to newest first.
+    while msgs.len() > 2 {
+        let current_total: usize = msgs.iter().map(|m| m.content.len()).sum();
+        if current_total <= MAX_TOTAL_CHARS {
+            break;
+        }
+        msgs.remove(1);
+    }
+
+    // If still over limit with 2 messages (system message + user message)
+    let current_total: usize = msgs.iter().map(|m| m.content.len()).sum();
+    if current_total > MAX_TOTAL_CHARS && msgs.len() >= 2 {
+        let head_budget = 2500;
+        if msgs[0].content.len() > head_budget {
+            let h = &msgs[0].content;
+            let idx = h.char_indices().nth(head_budget).map(|(i, _)| i).unwrap_or(head_budget);
+            msgs[0].content = format!("{}\n\n...[instructions truncated]...", &h[..idx]);
+        }
+        let remaining_budget = MAX_TOTAL_CHARS.saturating_sub(msgs[0].content.len()).max(1000);
+        let last_idx = msgs.len() - 1;
+        if msgs[last_idx].content.len() > remaining_budget {
+            let tail_content = &msgs[last_idx].content;
+            let excess = tail_content.len().saturating_sub(remaining_budget);
+            let start_idx = tail_content.char_indices().find(|(i, _)| *i >= excess).map(|(i, _)| i).unwrap_or(excess);
+            msgs[last_idx].content = tail_content[start_idx..].to_string();
+        }
+    }
+
+    msgs
+}
+
 
 #[cfg(test)]
 mod tests {

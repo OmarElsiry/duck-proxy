@@ -5,9 +5,12 @@ pub mod models;
 pub mod payload;
 pub mod stream;
 pub mod types;
+pub mod virtual_user;
 
 pub use client::DuckClient;
 pub use models::{DuckModel, DUCK_MODELS, IMAGE_GEN_CHAT_MODEL};
 pub use payload::build_chat_payload;
 pub use stream::{parse_sse_line, SseEvent};
 pub use types::*;
+pub use virtual_user::{VirtualUser, VirtualUserPool, VirtualUserSnapshot, USER_AGENTS, USER_AGENT};
+

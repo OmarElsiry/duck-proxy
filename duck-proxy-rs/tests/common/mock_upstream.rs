@@ -241,6 +241,18 @@ impl MockDuckServer {
             .await;
     }
 
+    /// Preset: Chat completion returning HTTP error status for a specific model up to N times.
+    pub async fn mock_chat_error_for_model_times(&self, model: &str, status_code: u16, error_body: &str, times: u64) {
+        Mock::given(method("POST"))
+            .and(path("/duckchat/v1/chat"))
+            .and(DuckPayloadMatcher::for_model(model))
+            .respond_with(ResponseTemplate::new(status_code).set_body_string(error_body))
+            .up_to_n_times(times)
+            .mount(&self.server)
+            .await;
+    }
+
+
     /// Preset: Chat completion returning SSE error frame.
     pub async fn mock_chat_sse_error(&self, status: u16, error_type: &str) {
         let sse_body = format!(

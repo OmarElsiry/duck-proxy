@@ -68,10 +68,22 @@ pub struct Config {
     pub upstream_base_url: String,
     #[serde(default = "default_auto_fallback")]
     pub auto_fallback: bool,
+    #[serde(default = "default_virtual_users_count")]
+    pub virtual_users_count: usize,
+    #[serde(default = "default_auto_rotate_virtual_users")]
+    pub auto_rotate_virtual_users: bool,
 }
 
 fn default_auto_fallback() -> bool {
     false
+}
+
+fn default_virtual_users_count() -> usize {
+    5
+}
+
+fn default_auto_rotate_virtual_users() -> bool {
+    true
 }
 
 fn default_upstream_base_url() -> String {
@@ -110,9 +122,12 @@ impl Default for Config {
             model_list: default_model_list(),
             upstream_base_url: default_upstream_base_url(),
             auto_fallback: default_auto_fallback(),
+            virtual_users_count: default_virtual_users_count(),
+            auto_rotate_virtual_users: default_auto_rotate_virtual_users(),
         }
     }
 }
+
 
 impl Config {
     /// Load configuration from a YAML string.
