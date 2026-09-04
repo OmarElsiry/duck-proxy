@@ -121,14 +121,14 @@ fn test_config_yaml_parsing_and_fallbacks() {
     assert_eq!(empty_str_cfg.server.host, "0.0.0.0");
     assert_eq!(empty_str_cfg.server.port, 18080);
     assert_eq!(empty_str_cfg.upstream_base_url, "https://duck.ai");
-    assert_eq!(empty_str_cfg.model_list.len(), 19);
+    assert_eq!(empty_str_cfg.model_list.len(), 20);
 
     // 2. Empty YAML dictionary -> Succeeded with defaults
     let empty_dict = Config::from_str("{}").expect("Empty dict should parse to defaults");
     assert_eq!(empty_dict.server.host, "0.0.0.0");
     assert_eq!(empty_dict.server.port, 18080);
     assert_eq!(empty_dict.upstream_base_url, "https://duck.ai");
-    assert_eq!(empty_dict.model_list.len(), 19);
+    assert_eq!(empty_dict.model_list.len(), 20);
 
     // 3. Partial config with only server port
     let partial_yaml = "server:\n  port: 9999\n";
@@ -136,7 +136,7 @@ fn test_config_yaml_parsing_and_fallbacks() {
     assert_eq!(partial_cfg.server.host, "0.0.0.0");
     assert_eq!(partial_cfg.server.port, 9999);
     assert_eq!(partial_cfg.upstream_base_url, "https://duck.ai");
-    assert_eq!(partial_cfg.model_list.len(), 19);
+    assert_eq!(partial_cfg.model_list.len(), 20);
 
     // 4. Partial config with empty model_list
     let empty_models_yaml = "model_list: []\n";

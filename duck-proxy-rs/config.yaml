@@ -21,6 +21,10 @@ model_list:
     duck_model: tinfoil/gemma4-31b
   - model_name: gemma4-31b
     duck_model: tinfoil/gemma4-31b
+  - model_name: tinfoil/gpt-oss-120b
+    duck_model: tinfoil/gpt-oss-120b
+  - model_name: gpt-oss-120b
+    duck_model: tinfoil/gpt-oss-120b
   - model_name: image-generation
     duck_model: image-generation
 
@@ -35,6 +39,8 @@ model_list:
     duck_model: mistral-small-2603
   - model_name: gemma
     duck_model: tinfoil/gemma4-31b
+  - model_name: gpt_oss
+    duck_model: tinfoil/gpt-oss-120b
   - model_name: image
     duck_model: image-generation
   - model_name: gpt-image-2.0

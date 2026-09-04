@@ -99,11 +99,14 @@ pub fn default_model_list() -> Vec<ModelMapping> {
         ModelMapping::new("mistral-small-2603", "mistral-small-2603"),
         ModelMapping::new("tinfoil/gemma4-31b", "tinfoil/gemma4-31b"),
         ModelMapping::new("gemma4-31b", "tinfoil/gemma4-31b"),
+        ModelMapping::new("tinfoil/gpt-oss-120b", "tinfoil/gpt-oss-120b"),
+        ModelMapping::new("gpt-oss-120b", "tinfoil/gpt-oss-120b"),
         ModelMapping::new("image-generation", "image-generation"),
         ModelMapping::new("gpt5", "gpt-5.6-luna"),
         ModelMapping::new("gpt-5-6", "gpt-5.6-luna"),
         ModelMapping::new("gpt5_mini", "gpt-5.4-mini"),
         ModelMapping::new("gemma", "tinfoil/gemma4-31b"),
+        ModelMapping::new("gpt_oss", "tinfoil/gpt-oss-120b"),
         ModelMapping::new("claude", "claude-haiku-4-5"),
         ModelMapping::new("mistral", "mistral-small-2603"),
         ModelMapping::new("image", "image-generation"),
@@ -252,6 +255,7 @@ impl Config {
             || lower.starts_with("sonnet")
             || lower.starts_with("haiku")
             || lower.starts_with("opus")
+            || lower.starts_with("fable")
         {
             return self.model_list.iter().find(|m| m.duck_model == "claude-haiku-4-5");
         }
@@ -261,8 +265,17 @@ impl Config {
         {
             return self.model_list.iter().find(|m| m.duck_model == "mistral-small-2603");
         }
-        if lower.starts_with("gemma") {
+        if lower.starts_with("gemma")
+            || lower.starts_with("tinfoil/gemma")
+        {
             return self.model_list.iter().find(|m| m.duck_model == "tinfoil/gemma4-31b");
+        }
+        if lower.starts_with("gpt-oss")
+            || lower.starts_with("gpt_oss")
+            || lower.starts_with("gptoss")
+            || lower.starts_with("tinfoil/gpt-oss")
+        {
+            return self.model_list.iter().find(|m| m.duck_model == "tinfoil/gpt-oss-120b");
         }
 
         None
@@ -284,6 +297,7 @@ impl Config {
                 "gpt-5.4-mini".to_string(),
                 "claude-haiku-4-5".to_string(),
                 "mistral-small-2603".to_string(),
+                "tinfoil/gpt-oss-120b".to_string(),
                 "tinfoil/gemma4-31b".to_string(),
             ],
             "gpt-5.4-mini" => vec![
@@ -291,6 +305,7 @@ impl Config {
                 "gpt-5.6-luna".to_string(),
                 "claude-haiku-4-5".to_string(),
                 "mistral-small-2603".to_string(),
+                "tinfoil/gpt-oss-120b".to_string(),
                 "tinfoil/gemma4-31b".to_string(),
             ],
             "claude-haiku-4-5" => vec![
@@ -298,6 +313,7 @@ impl Config {
                 "gpt-5.6-luna".to_string(),
                 "gpt-5.4-mini".to_string(),
                 "mistral-small-2603".to_string(),
+                "tinfoil/gpt-oss-120b".to_string(),
                 "tinfoil/gemma4-31b".to_string(),
             ],
             "mistral-small-2603" => vec![
@@ -305,6 +321,15 @@ impl Config {
                 "gpt-5.6-luna".to_string(),
                 "gpt-5.4-mini".to_string(),
                 "claude-haiku-4-5".to_string(),
+                "tinfoil/gpt-oss-120b".to_string(),
+                "tinfoil/gemma4-31b".to_string(),
+            ],
+            "tinfoil/gpt-oss-120b" | "gpt-oss-120b" | "gpt_oss" => vec![
+                "tinfoil/gpt-oss-120b".to_string(),
+                "gpt-5.6-luna".to_string(),
+                "gpt-5.4-mini".to_string(),
+                "claude-haiku-4-5".to_string(),
+                "mistral-small-2603".to_string(),
                 "tinfoil/gemma4-31b".to_string(),
             ],
             "tinfoil/gemma4-31b" | "gemma4-31b" => vec![
@@ -313,6 +338,7 @@ impl Config {
                 "gpt-5.4-mini".to_string(),
                 "claude-haiku-4-5".to_string(),
                 "mistral-small-2603".to_string(),
+                "tinfoil/gpt-oss-120b".to_string(),
             ],
             other => vec![
                 other.to_string(),
@@ -320,6 +346,7 @@ impl Config {
                 "gpt-5.4-mini".to_string(),
                 "claude-haiku-4-5".to_string(),
                 "mistral-small-2603".to_string(),
+                "tinfoil/gpt-oss-120b".to_string(),
                 "tinfoil/gemma4-31b".to_string(),
             ],
         }
@@ -338,7 +365,7 @@ mod tests {
         assert_eq!(cfg.server.host, "0.0.0.0");
         assert_eq!(cfg.server.port, 18080);
         assert_eq!(cfg.upstream_base_url, "https://duck.ai");
-        assert_eq!(cfg.model_list.len(), 19);
+        assert_eq!(cfg.model_list.len(), 20);
 
         assert_eq!(
             cfg.resolve_duck_model("gpt-5.6-luna"),
@@ -398,7 +425,7 @@ server:
         assert_eq!(cfg.server.host, "0.0.0.0");
         assert_eq!(cfg.server.port, 3000);
         assert_eq!(cfg.upstream_base_url, "https://duck.ai");
-        assert_eq!(cfg.model_list.len(), 19);
+        assert_eq!(cfg.model_list.len(), 20);
     }
 
     #[test]

@@ -90,6 +90,8 @@ model_list:
     duck_model: mistral-small-2603
   - model_name: gemma
     duck_model: tinfoil/gemma4-31b
+  - model_name: gpt_oss
+    duck_model: tinfoil/gpt-oss-120b
   - model_name: image
     duck_model: image-generation
 ```
@@ -184,7 +186,7 @@ print("Image saved to duck.png!")
 In your UI settings:
 - **API Base URL**: `http://localhost:18080/v1` (or `http://host.docker.internal:18080/v1` if running WebUI inside Docker)
 - **API Key**: `duck-proxy`
-- **Models**: `gpt-5.6-luna`, `gpt5`, `gpt5_mini`, `claude`, `mistral`, `gemma`, `image`
+- **Models**: `gpt-5.6-luna`, `gpt5`, `gpt5_mini`, `claude`, `mistral`, `gpt_oss`, `gemma`, `image`
 
 ### 💻 Cursor / Continue.dev (VS Code)
 Add to your Continue or Cursor custom model config:

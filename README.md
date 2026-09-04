@@ -9,7 +9,7 @@
 
 **Duck Proxy** is a high-performance, asynchronous local server written in pure Rust that converts Duck.ai into a standard **OpenAI API endpoint (`http://localhost:18080/v1`)**.
 
-Connect it seamlessly to **OpenCode CLI, Cursor, VS Code (Continue / Cline / Roo Code), ZCode, Aider, Zed, Windsurf, Neovim**, or any Python/Node.js application to access **GPT-5.6 Luna, Claude Haiku 4.5, Mistral Small 2603, Google Gemma 4 31B**, and native **`gpt-image 2.0` Image Generation** for free with zero API subscriptions.
+Connect it seamlessly to **OpenCode CLI, Cursor, VS Code (Continue / Cline / Roo Code), ZCode, Aider, Zed, Windsurf, Neovim**, or any Python/Node.js application to access **GPT-5.6 Luna, Claude Haiku 4.5, Mistral Small 2603, Google Gemma 4 31B, gpt-oss 120B**, and native **`gpt-image 2.0` Image Generation** for free with zero API subscriptions.
 
 ---
 
@@ -78,6 +78,7 @@ Every model has an **exact official identifier** as well as a **convenient short
 | `gpt-5.6-luna` | `gpt5` | `gpt-5.6-luna` | OpenAI | 128k / 200k | 🥇 **Primary Coding & Image Gen:** Complex system architecture, multi-file refactoring, native `gpt-image 2.0` |
 | `claude-haiku-4-5` | `claude` | `claude-haiku-4-5` | Anthropic | 128k / 200k | ⚡ **Fast Code Review:** Interactive editing, explaining bugs, writing unit tests |
 | `mistral-small-2603` | `mistral` | `mistral-small-2603` | Mistral AI | 64k / 128k | 🚀 **Speed & Logic:** Direct mathematical logic, algorithms, concise scripts |
+| `tinfoil/gpt-oss-120b` | `gpt_oss` | `tinfoil/gpt-oss-120b` | OpenAI / Tinfoil | 64k / 128k | 🧠 **Open Reasoning:** 120B open-weight model with strong coding and reasoning |
 | `tinfoil/gemma4-31b` | `gemma` | `tinfoil/gemma4-31b` | Google / Tinfoil | 64k / 128k | 🔒 **Privacy Focused:** High-parameter open model with zero tracking guarantees |
 | `gpt-5.4-mini` | `gpt5_mini` | `gpt-5.4-mini` | OpenAI | 64k / 128k | ⏱️ **Lightweight:** Fast syntax checks, quick Q&A, drafting git commit messages |
 | `image-generation` | `image` | `gpt-image 2.0` | OpenAI | — | 🎨 **Image Assets:** Generates high-res image assets via `/v1/images/generations` or chat prompts |
@@ -98,8 +99,10 @@ Configure OpenCode in `~/.opencode/config.json` (or `~/.config/opencode/config.j
       "apiKey": "duck-proxy",
       "models": [
         "gpt-5.6-luna",
+        "gpt-5.4-mini",
         "claude-haiku-4-5",
         "mistral-small-2603",
+        "tinfoil/gpt-oss-120b",
         "tinfoil/gemma4-31b"
       ]
     }
@@ -164,7 +167,102 @@ Add this block to your `~/.continue/config.json`:
 
 ---
 
-### 5. Aider CLI (Terminal Pair Programming)
+### 5. VS Code — Custom Endpoint (BYOK)
+
+Add duck proxy to your VS Code user `chatLanguageModels.json`:
+- Windows: `%APPDATA%\Code\User\chatLanguageModels.json`
+- macOS: `$HOME/Library/Application Support/Code/User/chatLanguageModels.json`
+- Linux: `$HOME/.config/Code/User/chatLanguageModels.json`
+
+<details>
+<summary><code>chatLanguageModels.json</code> — click to view 👈</summary>
+
+```json
+[
+  {
+    "name": "Duck.ai Proxy",
+    "vendor": "customendpoint",
+    "apiKey": "duck-proxy",
+    "apiType": "chat-completions",
+    "models": [
+      {
+        "id": "gpt-5.6-luna",
+        "name": "Duck.ai Proxy / GPT-5.6 Luna",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 922000,
+        "maxOutputTokens": 128000,
+        "thinking": true,
+        "supportsReasoningEffort": ["none","low"],
+        "reasoningEffortFormat": "chat-completions"
+      },
+      {
+        "id": "gpt-5.4-mini",
+        "name": "Duck.ai Proxy / GPT-5.4 mini",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 272000,
+        "maxOutputTokens": 128000,
+        "thinking": true,
+        "supportsReasoningEffort": ["none","low"],
+        "reasoningEffortFormat": "chat-completions"
+      },
+      {
+        "id": "claude-haiku-4-5",
+        "name": "Duck.ai Proxy / Claude Haiku 4.5",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 136000,
+        "maxOutputTokens": 64000,
+        "thinking": true,
+        "supportsReasoningEffort": ["none","low"],
+        "reasoningEffortFormat": "chat-completions"
+      },
+      {
+        "id": "mistral-small-2603",
+        "name": "Duck.ai Proxy / Mistral Small 4",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": false,
+        "maxInputTokens": 256000,
+        "maxOutputTokens": 256000
+      },
+      {
+        "id": "tinfoil/gpt-oss-120b",
+        "name": "Duck.ai Proxy / gpt-oss 120B",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": false,
+        "maxInputTokens": 131072,
+        "maxOutputTokens": 131072,
+        "thinking": true,
+        "supportsReasoningEffort": ["low"],
+        "reasoningEffortFormat": "chat-completions"
+      },
+      {
+        "id": "tinfoil/gemma4-31b",
+        "name": "Duck.ai Proxy / Gemma 4 31B",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 229376,
+        "maxOutputTokens": 32768,
+        "thinking": true,
+        "supportsReasoningEffort":["none", "low"],
+        "reasoningEffortFormat": "chat-completions"
+      }
+    ]
+  }
+]
+```
+</details>
+
+---
+
+### 6. Aider CLI (Terminal Pair Programming)
 ```bash
 export OPENAI_API_BASE="http://localhost:18080/v1"
 export OPENAI_API_KEY="duck-proxy"
@@ -175,7 +273,7 @@ aider --model openai/gpt-5.6-luna
 
 ---
 
-### 6. Zed Editor
+### 7. Zed Editor
 Add to `~/.config/zed/settings.json`:
 
 ```json
@@ -194,7 +292,7 @@ Add to `~/.config/zed/settings.json`:
 
 ---
 
-### 7. Python (OpenAI SDK)
+### 8. Python (OpenAI SDK)
 ```python
 from openai import OpenAI
 
@@ -216,7 +314,7 @@ for chunk in stream:
 
 ---
 
-### 8. Native `gpt-image 2.0` Image Generation
+### 9. Native `gpt-image 2.0` Image Generation
 
 #### In OpenCode CLI / TUI (Auto-Save to Workspace)
 Run image generation directly in your terminal; OpenCode decodes the base64 stream, writes the image to disk, and displays the full resolved path:
