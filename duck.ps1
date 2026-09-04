@@ -113,10 +113,11 @@ Write-Host @"
  ────────────────────────────────────────────────────────────────
   EXACT MODELS CATALOG:
    • gpt-5.6-luna       (gpt5)       → OpenAI GPT-5.6 Luna (Flagship Coding)
+   • gpt-5.4-mini       (gpt5_mini)  → OpenAI GPT-5.4 Mini (Lightweight)
    • claude-haiku-4-5   (claude)     → Anthropic Claude Haiku 4.5 (Fast Edits)
    • mistral-small-2603 (mistral)    → Mistral Small 2603 (Logic & Math)
+   • tinfoil/gpt-oss-120b (gpt_oss)  → OpenAI / Tinfoil gpt-oss 120B (Open Reasoning)
    • tinfoil/gemma4-31b (gemma)      → Google / Tinfoil Gemma 4 31B (Privacy)
-   • gpt-5.4-mini       (gpt5_mini)  → OpenAI GPT-5.4 Mini (Lightweight)
    • image-generation   (image, gpt-image-2.0) → OpenAI gpt-image 2.0 (Native Generator)
 
  ────────────────────────────────────────────────────────────────

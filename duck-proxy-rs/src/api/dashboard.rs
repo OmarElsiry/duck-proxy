@@ -654,7 +654,7 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
       <div class="metric-card">
         <div class="metric-label">Active Models</div>
         <div class="metric-value" id="models-count">7</div>
-        <div class="metric-subtext">GPT-5, Claude, Mistral, Gemma</div>
+        <div class="metric-subtext">GPT-5, Claude, Mistral, Gemma, gpt-oss</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Protocol</div>
@@ -726,10 +726,11 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
               <label class="form-label">Model Identifier</label>
               <select class="form-select" id="chat-model">
                 <option value="gpt-5.6-luna">gpt-5.6-luna (OpenAI GPT-5.6 Luna - Flagship)</option>
+                <option value="gpt-5.4-mini">gpt-5.4-mini (OpenAI GPT-5.4 Mini - Lightweight)</option>
                 <option value="claude-haiku-4-5">claude-haiku-4-5 (Anthropic Claude Haiku 4.5 - Fast)</option>
                 <option value="mistral-small-2603">mistral-small-2603 (Mistral Small 2603 - Logic)</option>
+                <option value="tinfoil/gpt-oss-120b">tinfoil/gpt-oss-120b (OpenAI / Tinfoil gpt-oss 120B)</option>
                 <option value="tinfoil/gemma4-31b">tinfoil/gemma4-31b (Google / Tinfoil Gemma 4 31B)</option>
-                <option value="gpt-5.4-mini">gpt-5.4-mini (OpenAI GPT-5.4 Mini - Lightweight)</option>
               </select>
             </div>
             <div class="form-group">
@@ -767,10 +768,11 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
               <label class="form-label">Streaming Model</label>
               <select class="form-select" id="stream-model">
                 <option value="gpt-5.6-luna">gpt-5.6-luna (OpenAI GPT-5.6 Luna)</option>
+                <option value="gpt-5.4-mini">gpt-5.4-mini (OpenAI GPT-5.4 Mini)</option>
                 <option value="claude-haiku-4-5">claude-haiku-4-5 (Anthropic Claude Haiku 4.5)</option>
                 <option value="mistral-small-2603">mistral-small-2603 (Mistral Small 2603)</option>
+                <option value="tinfoil/gpt-oss-120b">tinfoil/gpt-oss-120b (OpenAI gpt-oss 120B)</option>
                 <option value="tinfoil/gemma4-31b">tinfoil/gemma4-31b (Google Gemma 4 31B)</option>
-                <option value="gpt-5.4-mini">gpt-5.4-mini (OpenAI GPT-5.4 Mini)</option>
               </select>
             </div>
             <div class="form-group">
@@ -848,6 +850,12 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
             <td><strong>Flagship Coding:</strong> Complex multi-file architecture, deep logic, autonomous reasoning.</td>
           </tr>
           <tr>
+            <td><span class="pill-model">gpt5_mini</span></td>
+            <td>gpt-5.4-mini</td>
+            <td><span class="pill-provider">OpenAI</span></td>
+            <td><strong>Lightweight:</strong> Quick syntax lookups, commit message drafting, simple queries.</td>
+          </tr>
+          <tr>
             <td><span class="pill-model">claude</span></td>
             <td>claude-haiku-4-5</td>
             <td><span class="pill-provider">Anthropic</span></td>
@@ -860,16 +868,16 @@ pub const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
             <td><strong>Speed & Algorithms:</strong> Mathematical logic, concise scripts, algorithms.</td>
           </tr>
           <tr>
-            <td><span class="pill-model">gemma</span></td>
-            <td>tinfoil/gemma4-31b</td>
-            <td><span class="pill-provider">Google / Tin</span></td>
-            <td><strong>Privacy Preserved:</strong> High-parameter open model with zero-tracking guarantees.</td>
+            <td><span class="pill-model">gpt_oss</span></td>
+            <td>tinfoil/gpt-oss-120b</td>
+            <td><span class="pill-provider">OpenAI / Tinfoil</span></td>
+            <td><strong>Open Reasoning:</strong> 120B open-weight model with strong coding and reasoning.</td>
           </tr>
           <tr>
-            <td><span class="pill-model">gpt5_mini</span></td>
-            <td>gpt-5.4-mini</td>
-            <td><span class="pill-provider">OpenAI</span></td>
-            <td><strong>Lightweight:</strong> Quick syntax lookups, commit message drafting, simple queries.</td>
+            <td><span class="pill-model">gemma</span></td>
+            <td>tinfoil/gemma4-31b</td>
+            <td><span class="pill-provider">Google / Tinfoil</span></td>
+            <td><strong>Privacy Preserved:</strong> High-parameter open model with zero-tracking guarantees.</td>
           </tr>
           <tr>
             <td><span class="pill-model">image</span></td>
@@ -1021,6 +1029,18 @@ Model ID: gpt5</pre>
         "vision": false,
         "maxInputTokens": 256000,
         "maxOutputTokens": 256000
+      },
+      {
+        "id": "tinfoil/gpt-oss-120b",
+        "name": "Duck.ai Proxy / gpt-oss 120B",
+        "url": "http://localhost:18080/v1/chat/completions",
+        "toolCalling": true,
+        "vision": false,
+        "maxInputTokens": 131072,
+        "maxOutputTokens": 131072,
+        "thinking": true,
+        "supportsReasoningEffort": ["low"],
+        "reasoningEffortFormat": "chat-completions"
       },
       {
         "id": "tinfoil/gemma4-31b",
