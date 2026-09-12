@@ -1,19 +1,55 @@
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 18080
+
+virtual_users_count: 15
+auto_rotate_virtual_users: true
+auto_fallback: true
+
 
 model_list:
+  # Official Exact Model Identifiers
   - model_name: gpt-5.6-luna
     duck_model: gpt-5.6-luna
+  - model_name: gpt-5.4-mini
+    duck_model: gpt-5.4-mini
+  - model_name: claude-haiku-4-5
+    duck_model: claude-haiku-4-5
+  - model_name: mistral-small-2603
+    duck_model: mistral-small-2603
+  - model_name: tinfoil/gemma4-31b
+    duck_model: tinfoil/gemma4-31b
+  - model_name: gemma4-31b
+    duck_model: tinfoil/gemma4-31b
+  - model_name: image-generation
+    duck_model: image-generation
+
+  # Convenient Short Aliases
   - model_name: gpt5
     duck_model: gpt-5.6-luna
   - model_name: gpt5_mini
     duck_model: gpt-5.4-mini
-  - model_name: gemma
-    duck_model: tinfoil/gemma4-31b
   - model_name: claude
     duck_model: claude-haiku-4-5
   - model_name: mistral
     duck_model: mistral-small-2603
+  - model_name: gemma
+    duck_model: tinfoil/gemma4-31b
   - model_name: image
+    duck_model: image-generation
+  - model_name: gpt-image-2
+    duck_model: image-generation
+  - model_name: gbt-image-2
+    duck_model: image-generation
+  - model_name: gpt-image-2.0
+    duck_model: image-generation
+  - model_name: gpt-image-1.5
+    duck_model: image-generation
+  - model_name: gpt-image-1
+    duck_model: image-generation
+  - model_name: gpt-image-1-mini
+    duck_model: image-generation
+  - model_name: gpt-image
+    duck_model: image-generation
+  - model_name: dall-e-3
     duck_model: image-generation

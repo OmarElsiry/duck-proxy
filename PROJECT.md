@@ -1,129 +1,64 @@
-# Project: Duck.ai OpenAI-Compatible Rust Proxy (`duck-proxy-rs`)
+# Project: Native Duck.ai gpt-image 2.0 Integration
 
 ## Architecture
-A high-performance, asynchronous, zero-lag OpenAI-compatible proxy server for Duck.ai implemented in Rust within `duck-proxy-rs/`.
-- **Axum 0.7 Web Framework**: Exposes OpenAI REST endpoints (`/v1/models`, `/v1/chat/completions`, `/v1/images/generations`).
-- **Dedicated V8 OS Worker Thread**: Runs `deno_core::JsRuntime` with browser DOM stubs to solve `x-vqd-hash-1` JavaScript challenges asynchronously without blocking the Tokio runtime.
-- **Crypto & Telemetry**: Generates ephemeral 2048-bit RSA keypairs in RFC 7517 JWK format and generates realistic browser telemetry headers (`x-fe-version`, `x-ddg-journey-id`, `x-fe-signals`).
-- **Duck.ai Client & Stream Engine**: Handles VQD token chaining (`Arc<RwLock<Option<String>>>`), status token polling with 429 exponential backoff, SSE stream parsing, non-streaming buffering, and base64 image extraction.
-- **Hermetic Mock Testing Framework**: Uses `wiremock` to test all protocol features deterministically across 5 tiers without external network dependency.
+`duck-proxy-rs` operates as a high-performance local proxy bridging OpenAI-compatible API clients (such as the OpenCode TUI) to Duck.ai's upstream endpoints (`/duckchat/v1/chat`, `/duckchat/v1/status`, `/anomaly.js`).
 
-## Code Layout
-All Rust code, tests, configs, and manifests are strictly isolated in `duck-proxy-rs/`:
-```text
-duck-proxy-rs/
-├── Cargo.toml
-├── config.yaml
-├── README.md
-├── src/
-│   ├── main.rs            # Server startup, signal handling, router setup
-│   ├── config.rs          # YAML configuration & model alias resolver
-│   ├── error.rs           # OpenAI AppError format & axum IntoResponse
-│   ├── state.rs           # AppState (DuckClient, Config, V8ActorHandle)
-│   ├── api/
-│   │   ├── mod.rs         # Router assembly
-│   │   ├── models.rs      # GET /v1/models handler
-│   │   ├── chat.rs        # POST /v1/chat/completions (stream & non-stream)
-│   │   └── images.rs      # POST /v1/images/generations handler
-│   ├── duck/
-│   │   ├── mod.rs
-│   │   ├── models.rs      # Model definitions, aliases, capabilities
-│   │   ├── types.rs       # Wire request/response types
-│   │   ├── payload.rs     # Duck.ai payload builder
-│   │   ├── stream.rs      # SSE stream parser, chunk filter & image extractor
-│   │   └── client.rs      # Token chaining, backoff, HTTP client
-│   ├── v8/
-│   │   ├── mod.rs
-│   │   ├── stubs.rs       # Browser environment stubs (window, document, navigator)
-│   │   └── actor.rs       # Dedicated OS thread actor with mpsc/oneshot channels
-│   └── crypto/
-│       ├── mod.rs
-│       └── jwk.rs         # Ephemeral RSA-OAEP-256 JWK generator
-└── tests/
-    ├── common/
-    │   ├── mod.rs
-    │   └── mock_upstream.rs # Wiremock upstream Duck.ai emulator
-    ├── e2e_tier1_features.rs
-    ├── e2e_tier2_boundaries.rs
-    ├── e2e_tier3_combinations.rs
-    └── e2e_tier4_realworld.rs
-```
+Data and control flow:
+1. **Client Ingestion (`src/api/chat.rs`)**:
+   - Accepts `/v1/chat/completions` requests from OpenCode TUI.
+   - Detects image generation intent via `is_image_generation_intent`.
+   - Strips system prompt permission injection (`OMNI_PERMISSIONS_PROMPT`) for image requests.
+   - Preserves user prompt text without destructive bracket truncation.
+2. **Upstream Request & Session Management (`src/duck/payload.rs`, `src/duck/client.rs`)**:
+   - Constructs `DuckChatRequest` with `model: "gpt-5.6-luna"`, `metadata.toolChoice.GenerateImage: true`, `canUseTools: true`, `reasoningEffort: "low"` (enforced reasoning mode for chat requests, `"none"` for image gen), and RSA-OAEP-256 JWK in `durableStream`.
+   - Manages per-model sessions, VQD rotation, and handles HTTP 418 challenges by executing `/anomaly.js` PoW and preserving `is_image_gen = true` across in-flight retries.
+3. **SSE Stream Processing (`src/duck/stream.rs`)**:
+   - Parses upstream SSE events for both text and image streams.
+   - Handles `b64Image`, `data.b64Image`, `action: "image-partial"` / `"image-final"`, and `role: "partial-image"` / `"generated-image"`.
+   - Assembles multi-chunk partial base64 streams into complete image payloads.
+4. **Tool Call Synthesis & Single-Shot Turn Completion (`src/api/chat.rs`)**:
+   - Derives descriptive filenames (e.g. `knight.png`) from prompts.
+   - Buffers base64 to `/tmp/.duck_img_<id>.b64` and emits a quiet `bash` decode command echoing the resolved full path.
+   - Returns OpenAI tool call schema with `finish_reason: "tool_calls"`.
+   - On the subsequent turn containing `role: "tool"`, recognizes completion, suppresses replay, and terminates with `finish_reason: "stop"`.
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |
 |---|---------|-------------|-----------|--------|
-| 1 | Cargo & Config Scaffolding | Cargo manifest, `config.yaml`, and YAML config parsing | M1 | ORIGINAL_REQUEST §2, §6 |
-| 2 | OpenAI Error Handling | Standardized OpenAI error JSON formatting (`AppError`) | M1 | ORIGINAL_REQUEST §3 |
-| 3 | Ephemeral RSA JWK Generator | 2048-bit RSA-OAEP-256 keypair with unpadded base64url JWK export | M1 | ORIGINAL_REQUEST §4.D |
-| 4 | Browser Stubs Definition | `stubs.js` embedded browser DOM environment for V8 | M1 | ORIGINAL_REQUEST §4.B |
-| 5 | V8 Challenge Solver Actor | Dedicated OS worker thread with `deno_core::JsRuntime` and mpsc actor loop | M2 | ORIGINAL_REQUEST §4.B |
-| 6 | Challenge Execution & Metadata | Decode base64 challenge, execute in V8, inject UA SHA-256, origin, stack, duration | M2 | ORIGINAL_REQUEST §4.B |
-| 7 | Duck.ai Model Registry | Model definitions, aliases, capabilities, and reasoning effort mapping | M3 | ORIGINAL_REQUEST §4, §6 |
-| 8 | Telemetry Signals Generator | `x-fe-version`, `x-ddg-journey-id`, and `x-fe-signals` payload generation | M3 | ORIGINAL_REQUEST §4.C |
-| 9 | Duck.ai Wire Payload Builder | Chat wire payload construction with `durableStream.publicKey` | M3 | ORIGINAL_REQUEST §4.D |
-| 10 | VQD Token Chaining & 429 Retry | `/duckchat/v1/status` initial polling and `x-vqd-hash-1` token chaining | M3 | ORIGINAL_REQUEST §4.E |
-| 11 | SSE Stream Parser & Filter | Parse `data:` lines, filter control frames (`[PING]`, `[LIMIT]`, `[CHAT_TITLE]`) | M4 | ORIGINAL_REQUEST §4, §5 |
-| 12 | Image Generation & Extraction | Map `/v1/images/generations` to `gpt-5.6-luna` + `GenerateImage: true`, extract `b64Image` | M4 | ORIGINAL_REQUEST §5.3 |
-| 13 | Axum OpenAI API Endpoints | `GET /v1/models`, `POST /v1/chat/completions` (stream/non-stream), `POST /v1/images/generations` | M4 | ORIGINAL_REQUEST §5 |
-| 14 | Axum Server Lifecycle | Main entrypoint, routing, tracing, CORS, graceful shutdown | M4 | ORIGINAL_REQUEST §3 |
-| 15 | E2E Mock Upstream Infrastructure | Hermetic wiremock-based test harness (`MockDuckServer`) | E2E Track | ORIGINAL_REQUEST §2, Acceptance |
-| 16 | E2E Tier 1 Feature Coverage Tests | Integration tests for models, streaming/non-streaming chat, images, VQD, JWK | E2E Track | Acceptance Criteria |
-| 17 | E2E Tier 2 Boundary & Corner Tests | Error handling, empty inputs, 429 backoff, malformed challenges, upstream drops | E2E Track | Acceptance Criteria |
-| 18 | E2E Tier 3 Combination Tests | Multi-turn VQD chaining, model alias switching, stream abortion | E2E Track | Acceptance Criteria |
-| 19 | E2E Tier 4 Real-World Workload Tests | Full OpenAI client simulation, code streaming, concurrency stress | E2E Track | Acceptance Criteria |
-| 20 | E2E 100% Pass & Tier 5 Hardening | 100% pass of Tiers 1-4 tests followed by Tier 5 adversarial coverage hardening | M5 | Acceptance Criteria |
+| 1 | Upstream Image Payload Construction | `toolChoice.GenerateImage: true`, model `gpt-5.6-luna`, JWK in `durableStream` | M1 | Survey |
+| 2 | SSE Multi-Chunk Stream Assembly | Aggregate `image-partial` base64 chunks without truncating to first chunk | M1 | Survey |
+| 3 | Prompt Preservation | Eliminate indiscriminate `find('[')` bracket truncation on image prompts | M1 | Survey |
+| 4 | 418 Anomaly Retry with Image Flag | Pass `is_image_gen` during 418 challenge retries in `client.rs` | M2 | Survey |
+| 5 | Anti-Bot & Session Resilience | Maintain V8 challenge solving, VQD rotation, zero external fallbacks | M2 | Survey |
+| 6 | OpenCode TUI Tool Call Synthesis | Synthesize `bash` tool call decoding base64 to workspace file and printing full path | M3 | Survey |
+| 7 | Single-Shot Turn Completion | Conclude follow-up tool turn cleanly with `finish_reason: "stop"` | M3 | Survey |
+| 8 | Automated Protocol Test Suite | 100% pass on `tests/protocol_tests.rs` and comprehensive E2E tests | M4 | Survey |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | Core Foundation, Config, Crypto JWK & Stubs | `Cargo.toml`, `config.yaml`, `config.rs`, `error.rs`, `crypto/jwk.rs`, `v8/stubs.rs` | none | DONE |
-| M2 | V8 Challenge Solver Actor | `v8/actor.rs`, `v8/mod.rs`, `deno_core` worker thread, channel comms | M1 | IN_PROGRESS |
-| M3 | Duck.ai Client Engine, Telemetry & Token Chaining | `duck/models.rs`, `duck/types.rs`, `duck/payload.rs`, `duck/client.rs` | M1, M2 | PLANNED |
-| M4 | SSE Stream, Image Extractor & Axum Web Server | `duck/stream.rs`, `state.rs`, `api/`, `main.rs` | M3 | PLANNED |
-| M5 | Final Milestone: 100% E2E Pass & Tier 5 Hardening | Full integration pass on Tiers 1-4 tests, followed by Tier 5 adversarial hardening | M4, E2E Track (TEST_READY.md) | PLANNED |
-| E2E | E2E Testing Track (Parallel) | Hermetic mock upstream, Tiers 1-4 integration test suites, publishing `TEST_READY.md` | none | IN_PROGRESS |
+| 1 | Upstream Native Wire Protocol & Multi-Chunk SSE Assembly | `src/api/chat.rs`, `src/duck/stream.rs`, `src/duck/payload.rs` | none | PLANNED |
+| 2 | Challenge Anomaly Retry & Session Resilience | `src/duck/client.rs` | M1 | PLANNED |
+| 3 | OpenCode TUI Tool Call Synthesis & Single-Shot Hardening | `src/api/chat.rs`, `src/api/images.rs` | M1 | PLANNED |
+| 4 | Protocol & E2E Test Suite Validation | `tests/protocol_tests.rs`, `tests/e2e_tier1_features.rs` | M1, M2, M3 | PLANNED |
 
 ## Interface Contracts
+### `duck-proxy-rs` ↔ Duck.ai Upstream
+- Endpoint: `POST https://duck.ai/duckchat/v1/chat`
+- Headers: `x-vqd-hash-1: <v8_solved_hash>`, `x-fe-version`, `x-ddg-journey-id`, `x-fe-signals`
+- Payload: `{"model":"gpt-5.6-luna","messages":[{"role":"user","content":"<prompt>"}],"metadata":{"toolChoice":{"GenerateImage":true}},"canUseTools":true,"durableStream":{"publicKey":{...}}}`
+- Response SSE Actions: `image-partial`, `image-final`, `b64Image`, `ImageData`
 
-### 1. `crypto::jwk` ↔ `duck::payload`
-- `EphemeralKeypair::generate() -> EphemeralKeypair`
-- `EphemeralKeypair::public_jwk(&self) -> JwkPublicKey`
-- `JwkPublicKey` serializes to JSON matching:
-  ```json
-  {
-    "alg": "RSA-OAEP-256",
-    "e": "AQAB",
-    "ext": true,
-    "key_ops": ["encrypt"],
-    "kty": "RSA",
-    "n": "<base64url_no_pad_modulus>",
-    "use": "enc"
-  }
-  ```
+### OpenCode TUI ↔ `duck-proxy-rs`
+- Endpoint: `POST /v1/chat/completions`
+- Request: OpenAI format with `messages` and `tools`
+- Turn 1 Response: `finish_reason: "tool_calls"`, `tool_calls: [{"id": "...", "type": "function", "function": {"name": "bash", "arguments": "{\"command\": \"base64 -d /tmp/.duck_img_*.b64 > 'knight.png' && rm -f /tmp/.duck_img_*.b64 && echo \\\"Image successfully saved to: $(realpath 'knight.png' 2>/dev/null || echo \\\"$(pwd)/knight.png\\\")\\\"\"}"}}]`
+- Turn 2 Response (after tool result): `finish_reason: "stop"`, `content: "Operation completed successfully."`
 
-### 2. `v8::actor` ↔ `duck::client`
-- `V8ActorHandle::solve(&self, challenge_b64: String, user_agent: String) -> Result<String, ChallengeError>`
-- Message request: `(challenge_b64, user_agent, oneshot::Sender<Result<String, ChallengeError>>)`
-- Solved output: base64-encoded JSON string containing updated `client_hashes` and `meta` fields.
-
-### 3. `duck::client` ↔ `api::chat` & `api::images`
-- `DuckClient::chat_stream(&self, request: &ChatCompletionRequest) -> Result<impl Stream<Item = Result<ChatChunk, DuckError>>, AppError>`
-- `DuckClient::chat_complete(&self, request: &ChatCompletionRequest) -> Result<ChatCompletionResponse, AppError>`
-- `DuckClient::generate_image(&self, prompt: &str) -> Result<ImageGenerationResponse, AppError>`
-
-### 4. `config::Config` ↔ `duck::models`
-- `Config::resolve_model(&self, requested: &str) -> Result<ModelInfo, AppError>`
-- Maps aliases (e.g. `gpt5`, `claude`, `gemma`, `image`) to actual Duck.ai models.
-
-### 5. `error::AppError` ↔ Axum Handlers
-- `AppError` implements `axum::response::IntoResponse` formatting OpenAI errors:
-  ```json
-  {
-    "error": {
-      "message": "...",
-      "type": "invalid_request_error | rate_limit_error | api_error",
-      "param": null,
-      "code": null
-    }
-  }
-  ```
+## Code Layout
+- `duck-proxy-rs/src/api/chat.rs`: Request handling, intent detection, prompt preparation, tool synthesis
+- `duck-proxy-rs/src/duck/payload.rs`: Upstream chat & image payload serializer
+- `duck-proxy-rs/src/duck/stream.rs`: Upstream SSE parser
+- `duck-proxy-rs/src/duck/client.rs`: Upstream HTTP client, VQD manager, 418 challenge retry
+- `duck-proxy-rs/src/v8/actor.rs`: V8 isolate challenge solver
+- `duck-proxy-rs/tests/protocol_tests.rs`: Core protocol tests

@@ -10,7 +10,7 @@ pub struct DuckChatMessage {
 }
 
 /// Tool choice flags sent in chat metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolChoice {
     #[serde(rename = "NewsSearch")]
     pub news_search: bool,
@@ -24,23 +24,10 @@ pub struct ToolChoice {
     pub generate_image: Option<bool>,
 }
 
-impl Default for ToolChoice {
-    fn default() -> Self {
-        Self {
-            news_search: false,
-            videos_search: false,
-            local_search: false,
-            weather_forecast: false,
-            generate_image: None,
-        }
-    }
-}
-
 /// Metadata block in the chat request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMetadata {
-    pub can_use_web_search: bool,
     pub tool_choice: ToolChoice,
 }
 
@@ -53,6 +40,31 @@ pub struct DurableStream {
     pub public_key: serde_json::Value,
 }
 
+/// Upstream Duck.ai wire value for reasoning mode ("low").
+pub const REASONING_EFFORT_REASONING: &str = "low";
+
+/// Upstream Duck.ai wire value for medium reasoning effort ("medium").
+pub const REASONING_EFFORT_MEDIUM: &str = "medium";
+
+/// Upstream Duck.ai wire value for fast / non-reasoning mode ("none").
+pub const REASONING_EFFORT_FAST: &str = "none";
+
+/// Client specifier for maximum reasoning effort.
+pub const REASONING_EFFORT_MAX: &str = "max";
+
+/// Returns the maximum allowable reasoning effort for a given Duck.ai model.
+///
+/// Upstream Duck.ai allows ["none", "low", "medium"] for gpt-5.4-mini, gpt-5.4, gpt-5.6-terra, gpt-5.6-sol,
+/// and claude-opus-4-8; and allows ["none", "low"] for gpt-5.6-luna, claude-haiku-4-5, tinfoil/gemma4-31b, etc.
+pub fn max_reasoning_effort_for_model(duck_model: &str) -> &'static str {
+    match duck_model.to_lowercase().as_str() {
+        "gpt-5.4-mini" | "gpt-5.4" | "gpt-5.6-terra" | "gpt-5.6-sol" | "claude-opus-4-8" => {
+            REASONING_EFFORT_MEDIUM
+        }
+        _ => REASONING_EFFORT_REASONING,
+    }
+}
+
 /// The full Duck.ai chat request wire payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,9 +74,19 @@ pub struct DuckChatRequest {
     pub messages: Vec<DuckChatMessage>,
     pub can_use_tools: bool,
     pub reasoning_effort: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub can_use_approx_location: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub can_delegate_image_generation: Option<bool>,
     pub durable_stream: DurableStream,
+}
+
+impl DuckChatRequest {
+    /// Returns true if this request is configured in Duck.ai reasoning mode ("low" or "medium").
+    pub fn is_reasoning_mode(&self) -> bool {
+        self.reasoning_effort == REASONING_EFFORT_REASONING
+            || self.reasoning_effort == REASONING_EFFORT_MEDIUM
+    }
 }
 
 /// Frontend telemetry event.
@@ -112,7 +134,6 @@ mod tests {
         let req = DuckChatRequest {
             model: "gpt-5.6-luna".to_string(),
             metadata: ChatMetadata {
-                can_use_web_search: true,
                 tool_choice: ToolChoice::default(),
             },
             messages: vec![DuckChatMessage {
@@ -121,7 +142,7 @@ mod tests {
             }],
             can_use_tools: true,
             reasoning_effort: "none".to_string(),
-            can_use_approx_location: None,
+            can_use_approx_location: Some(true),
             can_delegate_image_generation: None,
             durable_stream: DurableStream {
                 message_id: "abc".to_string(),

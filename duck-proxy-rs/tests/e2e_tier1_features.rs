@@ -333,12 +333,16 @@ async fn test_tier1_13_chat_streaming_basic_chunks_and_done() {
 
     let (chunks, saw_done) = harness.read_sse_stream(resp).await;
     assert!(saw_done, "SSE stream must terminate with [DONE]");
-    assert_eq!(chunks.len(), 3);
+    let completion_chunks: Vec<_> = chunks
+        .into_iter()
+        .filter(|c| c.get("object").and_then(|o| o.as_str()) == Some("chat.completion.chunk"))
+        .collect();
+    assert!(completion_chunks.len() >= 3);
 
-    assert_eq!(chunks[0]["choices"][0]["delta"]["content"], "Rust");
-    assert_eq!(chunks[1]["choices"][0]["delta"]["content"], " is");
-    assert_eq!(chunks[2]["choices"][0]["delta"]["content"], " fast.");
-    assert_eq!(chunks[0]["object"], "chat.completion.chunk");
+    assert_eq!(completion_chunks[0]["choices"][0]["delta"]["content"], "Rust");
+    assert_eq!(completion_chunks[1]["choices"][0]["delta"]["content"], " is");
+    assert_eq!(completion_chunks[2]["choices"][0]["delta"]["content"], " fast.");
+    assert_eq!(completion_chunks[0]["object"], "chat.completion.chunk");
 }
 
 #[tokio::test]

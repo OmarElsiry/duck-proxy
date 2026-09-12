@@ -24,8 +24,12 @@ async fn main() -> anyhow::Result<()> {
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port).parse()?;
     tracing::info!("Starting Duck.ai proxy on {}", addr);
 
-    // Build the application
-    let app = duck_proxy_rs::create_app(config)
+    // Build the state and warm session cookies
+    let state = duck_proxy_rs::AppState::new(config);
+    let startup_journey = uuid::Uuid::new_v4().simple().to_string();
+    state.duck_client.warm(&startup_journey).await;
+
+    let app = duck_proxy_rs::create_app_with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
 
@@ -41,27 +45,26 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Waits for a SIGINT or SIGTERM signal for graceful shutdown.
 async fn shutdown_signal() {
-    let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("Failed to install Ctrl+C handler");
-    };
-
     #[cfg(unix)]
-    let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Failed to install SIGTERM handler")
-            .recv()
-            .await;
-    };
+    {
+        let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler");
+        let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
+            .expect("Failed to install SIGINT handler");
+
+        tokio::select! {
+            _ = sigterm.recv() => {
+                tracing::info!("Received SIGTERM, shutting down");
+            }
+            _ = sigint.recv() => {
+                tracing::info!("Received SIGINT, shutting down");
+            }
+        }
+    }
 
     #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
+    {
+        let _ = signal::ctrl_c().await;
     }
 }

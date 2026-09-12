@@ -18,7 +18,7 @@ path = "src/main.rs"
 [dependencies]
 # Async Runtime & Web Server Framework
 tokio = { version = "1.40", features = ["full"] }
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.7", features = ["macros", "multipart"] }
 tower = { version = "0.5", features = ["util", "timeout"] }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 tokio-stream = "0.1"
@@ -49,6 +49,8 @@ thiserror = "1.0"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
+urlencoding = "2.1"
+tempfile = "3.10"
 [dev-dependencies]
 wiremock = "0.6"
 tempfile = "3.10"

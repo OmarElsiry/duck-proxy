@@ -29,7 +29,7 @@ fn default_host() -> String {
 }
 
 fn default_port() -> u16 {
-    8080
+    18080
 }
 
 impl Default for ServerConfig {
@@ -66,6 +66,24 @@ pub struct Config {
     pub model_list: Vec<ModelMapping>,
     #[serde(default = "default_upstream_base_url")]
     pub upstream_base_url: String,
+    #[serde(default = "default_auto_fallback")]
+    pub auto_fallback: bool,
+    #[serde(default = "default_virtual_users_count")]
+    pub virtual_users_count: usize,
+    #[serde(default = "default_auto_rotate_virtual_users")]
+    pub auto_rotate_virtual_users: bool,
+}
+
+fn default_auto_fallback() -> bool {
+    false
+}
+
+fn default_virtual_users_count() -> usize {
+    5
+}
+
+fn default_auto_rotate_virtual_users() -> bool {
+    true
 }
 
 fn default_upstream_base_url() -> String {
@@ -76,12 +94,24 @@ fn default_upstream_base_url() -> String {
 pub fn default_model_list() -> Vec<ModelMapping> {
     vec![
         ModelMapping::new("gpt-5.6-luna", "gpt-5.6-luna"),
+        ModelMapping::new("gpt-5.4-mini", "gpt-5.4-mini"),
+        ModelMapping::new("claude-haiku-4-5", "claude-haiku-4-5"),
+        ModelMapping::new("mistral-small-2603", "mistral-small-2603"),
+        ModelMapping::new("tinfoil/gemma4-31b", "tinfoil/gemma4-31b"),
+        ModelMapping::new("gemma4-31b", "tinfoil/gemma4-31b"),
+        ModelMapping::new("image-generation", "image-generation"),
         ModelMapping::new("gpt5", "gpt-5.6-luna"),
+        ModelMapping::new("gpt-5-6", "gpt-5.6-luna"),
         ModelMapping::new("gpt5_mini", "gpt-5.4-mini"),
         ModelMapping::new("gemma", "tinfoil/gemma4-31b"),
         ModelMapping::new("claude", "claude-haiku-4-5"),
         ModelMapping::new("mistral", "mistral-small-2603"),
         ModelMapping::new("image", "image-generation"),
+        ModelMapping::new("gpt-image-2.0", "image-generation"),
+        ModelMapping::new("gpt-image-2", "image-generation"),
+        ModelMapping::new("gpt-image", "image-generation"),
+        ModelMapping::new("dall-e-3", "image-generation"),
+        ModelMapping::new("dall-e-2", "image-generation"),
     ]
 }
 
@@ -91,12 +121,17 @@ impl Default for Config {
             server: ServerConfig::default(),
             model_list: default_model_list(),
             upstream_base_url: default_upstream_base_url(),
+            auto_fallback: default_auto_fallback(),
+            virtual_users_count: default_virtual_users_count(),
+            auto_rotate_virtual_users: default_auto_rotate_virtual_users(),
         }
     }
 }
 
+
 impl Config {
     /// Load configuration from a YAML string.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(yaml_str: &str) -> Result<Self, ConfigError> {
         let config: Config = serde_yaml::from_str(yaml_str)?;
         Ok(config)
@@ -123,7 +158,7 @@ impl Config {
                 }
                 Err(err) => {
                     tracing::warn!(
-                        "Failed to load configuration from {}: {}. Falling back to defaults.",
+                        "Failed to load config from {}: {}, falling back to default.",
                         p_ref.display(),
                         err
                     );
@@ -159,8 +194,16 @@ impl Config {
     /// 3. Exact match against `duck_model`.
     /// 4. Case-insensitive match against `model_name`.
     /// 5. Case-insensitive match against `duck_model`.
+    /// 6. Prefix and family matching for IDEs (Codex, Cursor, Cline, etc.).
     pub fn resolve_model(&self, requested: &str) -> Option<&ModelMapping> {
-        let normalized = requested.strip_prefix("duck/").unwrap_or(requested).trim();
+        let mut normalized = requested.trim();
+        if let Some(s) = normalized.strip_prefix("duckproxy/") {
+            normalized = s;
+        } else if let Some(s) = normalized.strip_prefix("duck/") {
+            normalized = s;
+        } else if let Some(s) = normalized.strip_prefix("openai/") {
+            normalized = s;
+        }
 
         // 1. Exact match on model_name
         if let Some(m) = self.model_list.iter().find(|m| m.model_name == normalized) {
@@ -190,12 +233,96 @@ impl Config {
             return Some(m);
         }
 
+        // 5. Family / prefix fallback for IDE clients
+        let lower = normalized.to_ascii_lowercase();
+        if lower.starts_with("gpt-5")
+            || lower.starts_with("gpt5")
+            || lower.starts_with("gpt-4")
+            || lower.starts_with("gpt4")
+            || lower.starts_with("o3")
+            || lower.starts_with("o1")
+            || lower.starts_with("chatgpt")
+        {
+            if lower.contains("mini") || lower.contains("nano") {
+                return self.model_list.iter().find(|m| m.duck_model == "gpt-5.4-mini");
+            }
+            return self.model_list.iter().find(|m| m.duck_model == "gpt-5.6-luna");
+        }
+        if lower.starts_with("claude")
+            || lower.starts_with("sonnet")
+            || lower.starts_with("haiku")
+            || lower.starts_with("opus")
+        {
+            return self.model_list.iter().find(|m| m.duck_model == "claude-haiku-4-5");
+        }
+        if lower.starts_with("mistral")
+            || lower.starts_with("codestral")
+            || lower.starts_with("pixtral")
+        {
+            return self.model_list.iter().find(|m| m.duck_model == "mistral-small-2603");
+        }
+        if lower.starts_with("gemma") {
+            return self.model_list.iter().find(|m| m.duck_model == "tinfoil/gemma4-31b");
+        }
+
         None
     }
 
     /// Helper returning only the upstream Duck.ai model identifier string.
     pub fn resolve_duck_model(&self, requested: &str) -> Option<&str> {
         self.resolve_model(requested).map(|m| m.duck_model.as_str())
+    }
+
+    /// Returns the ordered fallback candidate models for a given requested model.
+    pub fn fallback_chain(&self, duck_model: &str) -> Vec<String> {
+        if !self.auto_fallback {
+            return vec![duck_model.to_string()];
+        }
+        match duck_model {
+            "gpt-5.6-luna" => vec![
+                "gpt-5.6-luna".to_string(),
+                "gpt-5.4-mini".to_string(),
+                "claude-haiku-4-5".to_string(),
+                "mistral-small-2603".to_string(),
+                "tinfoil/gemma4-31b".to_string(),
+            ],
+            "gpt-5.4-mini" => vec![
+                "gpt-5.4-mini".to_string(),
+                "gpt-5.6-luna".to_string(),
+                "claude-haiku-4-5".to_string(),
+                "mistral-small-2603".to_string(),
+                "tinfoil/gemma4-31b".to_string(),
+            ],
+            "claude-haiku-4-5" => vec![
+                "claude-haiku-4-5".to_string(),
+                "gpt-5.6-luna".to_string(),
+                "gpt-5.4-mini".to_string(),
+                "mistral-small-2603".to_string(),
+                "tinfoil/gemma4-31b".to_string(),
+            ],
+            "mistral-small-2603" => vec![
+                "mistral-small-2603".to_string(),
+                "gpt-5.6-luna".to_string(),
+                "gpt-5.4-mini".to_string(),
+                "claude-haiku-4-5".to_string(),
+                "tinfoil/gemma4-31b".to_string(),
+            ],
+            "tinfoil/gemma4-31b" | "gemma4-31b" => vec![
+                "tinfoil/gemma4-31b".to_string(),
+                "gpt-5.6-luna".to_string(),
+                "gpt-5.4-mini".to_string(),
+                "claude-haiku-4-5".to_string(),
+                "mistral-small-2603".to_string(),
+            ],
+            other => vec![
+                other.to_string(),
+                "gpt-5.6-luna".to_string(),
+                "gpt-5.4-mini".to_string(),
+                "claude-haiku-4-5".to_string(),
+                "mistral-small-2603".to_string(),
+                "tinfoil/gemma4-31b".to_string(),
+            ],
+        }
     }
 }
 
@@ -209,15 +336,17 @@ mod tests {
     fn test_default_config() {
         let cfg = Config::default();
         assert_eq!(cfg.server.host, "0.0.0.0");
-        assert_eq!(cfg.server.port, 8080);
+        assert_eq!(cfg.server.port, 18080);
         assert_eq!(cfg.upstream_base_url, "https://duck.ai");
-        assert_eq!(cfg.model_list.len(), 7);
+        assert_eq!(cfg.model_list.len(), 19);
 
         assert_eq!(
             cfg.resolve_duck_model("gpt-5.6-luna"),
             Some("gpt-5.6-luna")
         );
         assert_eq!(cfg.resolve_duck_model("gpt5"), Some("gpt-5.6-luna"));
+        assert_eq!(cfg.resolve_duck_model("gpt-5-6"), Some("gpt-5.6-luna"));
+        assert_eq!(cfg.resolve_duck_model("gpt-5"), Some("gpt-5.6-luna"));
         assert_eq!(cfg.resolve_duck_model("gpt5_mini"), Some("gpt-5.4-mini"));
         assert_eq!(cfg.resolve_duck_model("claude"), Some("claude-haiku-4-5"));
         assert_eq!(
@@ -229,6 +358,12 @@ mod tests {
             Some("tinfoil/gemma4-31b")
         );
         assert_eq!(cfg.resolve_duck_model("image"), Some("image-generation"));
+
+        let mut cfg_with_fallback = cfg.clone();
+        cfg_with_fallback.auto_fallback = true;
+        let chain = cfg_with_fallback.fallback_chain("gpt-5.6-luna");
+        assert_eq!(chain[0], "gpt-5.6-luna");
+        assert!(chain.contains(&"gpt-5.4-mini".to_string()));
     }
 
     #[test]
@@ -263,7 +398,7 @@ server:
         assert_eq!(cfg.server.host, "0.0.0.0");
         assert_eq!(cfg.server.port, 3000);
         assert_eq!(cfg.upstream_base_url, "https://duck.ai");
-        assert_eq!(cfg.model_list.len(), 7);
+        assert_eq!(cfg.model_list.len(), 19);
     }
 
     #[test]
@@ -323,7 +458,7 @@ server:
 
         // load_or_default with missing path falls back to default
         let fallback_cfg = Config::load_or_default(Some(missing_path));
-        assert_eq!(fallback_cfg.server.port, 8080);
+        assert_eq!(fallback_cfg.server.port, 18080);
     }
 
     #[test]

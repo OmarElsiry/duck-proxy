@@ -14,6 +14,7 @@ pub const DUCK_MODELS: &[DuckModel] = &[
     DuckModel { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", owned_by: "anthropic" },
     DuckModel { id: "mistral-small-2603", name: "Mistral Small", owned_by: "mistral" },
     DuckModel { id: "image-generation", name: "Image Generation", owned_by: "duck.ai" },
+    DuckModel { id: "gpt-image-2", name: "GPT Image 2", owned_by: "openai" },
 ];
 
 /// The default model used for image generation requests.

@@ -1,0 +1,7 @@
+fastapi>=0.110.0
+uvicorn>=0.28.0
+httpx>=0.27.0
+pyyaml>=6.0.1
+cryptography>=42.0.0
+html5lib>=1.1
+mini-racer>=0.14.0

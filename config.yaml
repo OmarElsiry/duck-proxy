@@ -15,3 +15,19 @@ model_list:
     litellm_params: { model: duck/gpt_oss }
   - model_name: image
     litellm_params: { model: duck/image-generation }
+  - model_name: gpt-image-2
+    litellm_params: { model: duck/image-generation }
+  - model_name: gbt-image-2
+    litellm_params: { model: duck/image-generation }
+  - model_name: gpt-image-2.0
+    litellm_params: { model: duck/image-generation }
+  - model_name: gpt-image-1.5
+    litellm_params: { model: duck/image-generation }
+  - model_name: gpt-image-1
+    litellm_params: { model: duck/image-generation }
+  - model_name: gpt-image-1-mini
+    litellm_params: { model: duck/image-generation }
+  - model_name: gpt-image
+    litellm_params: { model: duck/image-generation }
+  - model_name: dall-e-3
+    litellm_params: { model: duck/image-generation }

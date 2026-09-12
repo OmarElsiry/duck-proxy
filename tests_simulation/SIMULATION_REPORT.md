@@ -1,6 +1,6 @@
 # Duck Proxy Comprehensive Simulation & E2E Testing Report
 
-**Generated:** 2026-08-28 23:22:42 UTC  
+**Generated:** 2026-08-29 18:51:58 UTC  
 **Target Binary:** `/home/potterparker/Desktop/prjcts/duck-proxy/duck-proxy-rs/target/release/duck-proxy-rs`  
 **Harness Environment:** Linux x86_64 / Rust 1.85+ / Python 3.14  
 
@@ -22,7 +22,7 @@
 ## Test Scenario Breakdown
 
 ### 1. Model Discovery & Routing
-- Discovered models: `gpt-5.6-luna, gpt5, gpt5_mini, gemma, claude, mistral, image`
+- Discovered models: `gpt-5.6-luna, gpt-5.4-mini, claude-haiku-4-5, mistral-small-2603, tinfoil/gemma4-31b, gemma4-31b, image-generation, gpt5, gpt5_mini, claude, mistral, gemma, image`
 - Route matching: Case-insensitive model names, prefix stripping (`duck/gpt5` -> `gpt-5.6-luna`).
 - Fallback resolution: Default model configured for unrecognized aliases.
 
@@ -49,23 +49,23 @@
 
 ## Performance & Resource Telemetry
 
-### System Metrics & Process Footprint (PID: 8030)
+### System Metrics & Process Footprint (PID: 10984)
 
 | Metric | Min | Max | Mean | P50 | P95 | P99 | Peak |
 |---|---|---|---|---|---|---|---|
-| **RSS Memory (MB)** | 12.62 | 12.62 | 12.62 | 12.62 | 12.62 | 12.62 | 12.62 |
+| **RSS Memory (MB)** | 18.08 | 18.08 | 18.08 | 18.08 | 18.08 | 18.08 | 18.08 |
 | **CPU Usage (%)** | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
-| **Active OS Threads** | 9 | 9 | 9.0 | 9 | 9 | 9 | 9 |
-| **Open File Descriptors** | 10 | 10 | 10.0 | 10 | 10 | 10 | 10 |
+| **Active OS Threads** | 11 | 11 | 11.0 | 11 | 11 | 11 | 11 |
+| **Open File Descriptors** | 11 | 11 | 11.0 | 11 | 11 | 11 | 11 |
 
 #### Resource Stability & Footprint Analysis
-- **Initial RSS Baseline**: `12.62 MB`
-- **Peak RSS**: `12.62 MB`
-- **Final RSS**: `12.62 MB`
+- **Initial RSS Baseline**: `18.08 MB`
+- **Peak RSS**: `18.08 MB`
+- **Final RSS**: `18.08 MB`
 - **Net RSS Drift**: `+0.00 MB` — ✅ **Stable (No memory leak detected)**
-- **Open File Descriptors**: `Initial: 10 | Final: 10 (Delta: +0)` — ✅ **Normal (No FD leak)**
-- **Active OS Threads**: `Initial: 9 | Final: 9 (Delta: +0)` — ✅ **Stable**
-- **Monitoring Period**: `0.03s` across `1` samples (@ 100ms)
+- **Open File Descriptors**: `Initial: 11 | Final: 11 (Delta: +0)` — ✅ **Normal (No FD leak)**
+- **Active OS Threads**: `Initial: 11 | Final: 11 (Delta: +0)` — ✅ **Stable**
+- **Monitoring Period**: `0.01s` across `1` samples (@ 100ms)
 
 
 ---

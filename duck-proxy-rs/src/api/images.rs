@@ -4,7 +4,7 @@ use axum::{extract::State, Json};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::duck::{build_chat_payload, parse_sse_line, DuckChatMessage, SseEvent, IMAGE_GEN_CHAT_MODEL};
+use crate::duck::IMAGE_GEN_CHAT_MODEL;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -55,56 +55,33 @@ pub async fn generate_image(
         ));
     }
 
-    let messages = vec![DuckChatMessage {
-        role: "user".to_string(),
-        content: req.prompt,
-    }];
+    let raw_b64 = tokio::time::timeout(
+        std::time::Duration::from_secs(115),
+        crate::api::chat::fetch_single_duck_image(
+            &state,
+            IMAGE_GEN_CHAT_MODEL,
+            &req.prompt,
+            &[IMAGE_GEN_CHAT_MODEL.to_string()],
+        ),
+    )
+    .await
+    .map_err(|_| AppError::bad_gateway("gpt-image-2 generation timed out (>115s)"))?
+    .map_err(|e| AppError::bad_gateway(format!("gpt-image-2 generation failed: {}", e)))?;
 
-    let payload = build_chat_payload(
-        IMAGE_GEN_CHAT_MODEL,
-        messages,
-        state.duck_client.keypair(),
-        true,
-    );
+    let clean_b64 = crate::duck::stream::extract_clean_b64(&raw_b64);
 
-    let resp = state.duck_client.send_chat_request(&payload).await?;
-    let body = resp.text().await.map_err(|e| {
-        AppError::bad_gateway(format!("Failed to read upstream image response: {}", e))
-    })?;
-
-    let mut accumulated_b64 = String::new();
-    for line in body.lines() {
-        if let Some(event) = parse_sse_line(line) {
-            match event {
-                SseEvent::ImageData(chunk) => {
-                    let clean = if chunk.starts_with("data:image/") {
-                        if let Some((_, b64_part)) = chunk.split_once(',') {
-                            b64_part
-                        } else {
-                            &chunk
-                        }
-                    } else {
-                        &chunk
-                    };
-                    accumulated_b64.push_str(clean);
-                }
-                SseEvent::Done => break,
-                SseEvent::Error(e) => {
-                    return Err(AppError::bad_gateway(format!("Upstream error: {}", e)));
-                }
-                _ => {}
-            }
-        }
+    let filename = crate::api::chat::derive_image_filename(&req.prompt);
+    crate::api::chat::save_last_generated_image(&clean_b64);
+    if let Some(bytes) = crate::duck::stream::decode_image_base64(&clean_b64) {
+        crate::api::chat::save_image_bytes(&filename, &bytes);
+        let _ = std::fs::write(format!("/tmp/{}", filename), &bytes);
+        let _ = std::fs::write(format!("/home/potterparker/Desktop/Projects/Learnopia/{}", filename), &bytes);
     }
 
-    if !accumulated_b64.is_empty() {
-        Ok(Json(ImageGenerationResponse {
-            created: Utc::now().timestamp(),
-            data: vec![ImageData {
-                b64_json: accumulated_b64,
-            }],
-        }))
-    } else {
-        Err(AppError::bad_gateway("No image data received from upstream"))
-    }
+    Ok(Json(ImageGenerationResponse {
+        created: Utc::now().timestamp(),
+        data: vec![ImageData {
+            b64_json: clean_b64,
+        }],
+    }))
 }

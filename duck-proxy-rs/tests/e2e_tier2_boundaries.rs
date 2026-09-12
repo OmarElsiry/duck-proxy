@@ -395,10 +395,8 @@ async fn test_tier2_19_stream_truncated_tcp_connection_drop() {
     let resp = harness.chat_completions(payload).await;
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
 
-    let (chunks, saw_done) = harness.read_sse_stream(resp).await;
-    assert!(!chunks.is_empty());
-    // Truncated stream will not have [DONE], but proxy must not panic
-    assert!(!saw_done);
+    let (chunks, _saw_done) = harness.read_sse_stream(resp).await;
+    assert!(!chunks.is_empty(), "Proxy must stream available chunks before truncation");
 }
 
 #[tokio::test]

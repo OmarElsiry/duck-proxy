@@ -29,7 +29,7 @@ pub fn generate_browser_stubs(user_agent: &str, html_lookup_json: Option<&str>) 
 /// the resolved result into `__R` or caught error into `__E`.
 pub fn wrap_challenge_code(challenge_js: &str) -> String {
     format!(
-        "({}).then(function(v){{ __R = v; }}).catch(function(e){{ __E = String((e && e.stack) || e); }});",
+        "Promise.resolve({}).then(function(v){{ __R = v; }}).catch(function(e){{ __E = String((e && e.stack) || e); }});",
         challenge_js
     )
 }
@@ -53,11 +53,7 @@ pub fn extract_html_lookup(js_code: &str) -> HashMap<String, HtmlLookupEntry> {
             let mut escaped = false;
 
             while j < len && (chars[j] != quote || escaped) && (j - start) < 400 {
-                if chars[j] == '\\' && !escaped {
-                    escaped = true;
-                } else {
-                    escaped = false;
-                }
+                escaped = chars[j] == '\\' && !escaped;
                 j += 1;
             }
 
@@ -65,11 +61,11 @@ pub fn extract_html_lookup(js_code: &str) -> HashMap<String, HtmlLookupEntry> {
                 let candidate: String = chars[start..j].iter().collect();
                 if !candidate.is_empty() && !seen.contains(&candidate) {
                     seen.insert(candidate.clone());
-                    let count = count_html_elements(&candidate);
+                    let (norm_html, count) = normalize_html_string(&candidate);
                     lookup.insert(
                         candidate.clone(),
                         HtmlLookupEntry {
-                            html: candidate,
+                            html: norm_html,
                             count,
                         },
                     );
@@ -84,30 +80,88 @@ pub fn extract_html_lookup(js_code: &str) -> HashMap<String, HtmlLookupEntry> {
     lookup
 }
 
-/// Counts the number of HTML opening tags in a fragment.
-fn count_html_elements(html: &str) -> usize {
+/// Normalizes an HTML fragment and counts elements matching HTML5 browser behavior,
+/// automatically closing unclosed opening tags at the end or on parent close.
+pub fn normalize_html_string(html: &str) -> (String, usize) {
     let mut count = 0;
-    let mut in_tag = false;
-    let mut tag_name = String::new();
+    let mut stack: Vec<String> = Vec::new();
+    let mut out = String::new();
+    let mut i = 0;
     let chars: Vec<char> = html.chars().collect();
+    let len = chars.len();
 
-    for i in 0..chars.len() {
-        if chars[i] == '<' && i + 1 < chars.len() && chars[i + 1] != '/' && chars[i + 1] != '!' {
-            in_tag = true;
-            tag_name.clear();
-        } else if in_tag {
-            if chars[i].is_whitespace() || chars[i] == '>' || chars[i] == '/' {
-                if !tag_name.is_empty() {
-                    count += 1;
-                    in_tag = false;
-                }
-            } else if chars[i].is_ascii_alphanumeric() {
+    while i < len {
+        if chars[i] == '<' {
+            let start = i;
+            i += 1;
+            let is_close = if i < len && chars[i] == '/' {
+                i += 1;
+                true
+            } else {
+                false
+            };
+
+            let mut tag_name = String::new();
+            while i < len && chars[i].is_ascii_alphanumeric() {
                 tag_name.push(chars[i]);
+                i += 1;
             }
+
+            let mut attrs = String::new();
+            let mut self_close = false;
+            while i < len && chars[i] != '>' {
+                if chars[i] == '/' && i + 1 < len && chars[i + 1] == '>' {
+                    self_close = true;
+                    i += 1;
+                    break;
+                }
+                attrs.push(chars[i]);
+                i += 1;
+            }
+            if i < len && chars[i] == '>' {
+                i += 1;
+            }
+
+            let tag_lower = tag_name.to_lowercase();
+            let is_void = matches!(
+                tag_lower.as_str(),
+                "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr"
+            );
+
+            let mut is_close = is_close;
+            // In HTML5, </br> is treated as a start tag <br>
+            if is_close && tag_lower == "br" {
+                is_close = false;
+            }
+
+            if is_close {
+                while let Some(top) = stack.pop() {
+                    out.push_str(&format!("</{}>", top));
+                    if top == tag_lower {
+                        break;
+                    }
+                }
+            } else if !tag_lower.is_empty() {
+                count += 1;
+                out.push_str(&format!("<{}{}>", tag_lower, attrs));
+                if !is_void && !self_close {
+                    stack.push(tag_lower);
+                }
+            } else {
+                let sub: String = chars[start..i].iter().collect();
+                out.push_str(&sub);
+            }
+        } else {
+            out.push(chars[i]);
+            i += 1;
         }
     }
 
-    count
+    while let Some(top) = stack.pop() {
+        out.push_str(&format!("</{}>", top));
+    }
+
+    (out, count)
 }
 
 #[cfg(test)]
@@ -149,7 +203,7 @@ mod tests {
     fn test_wrap_challenge_code() {
         let code = "async function() { return { ok: true }; }()";
         let wrapped = wrap_challenge_code(code);
-        assert!(wrapped.starts_with('('));
+        assert!(wrapped.starts_with("Promise.resolve("));
         assert!(wrapped.contains(".then(function(v){ __R = v; })"));
         assert!(wrapped.contains(".catch(function(e){ __E = String((e && e.stack) || e); });"));
     }

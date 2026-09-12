@@ -15,6 +15,54 @@ function __defGlobal(name, val) {
   }
 }
 
+function __parseAndNormalizeHtml(html) {
+  var tagRegex = /<\/?([a-zA-Z0-9]+)([^>]*?)(\/?>|$)/g;
+  var stack = [];
+  var out = "";
+  var count = 0;
+  var voidTags = { AREA:1, BASE:1, BR:1, COL:1, EMBED:1, HR:1, IMG:1, INPUT:1, LINK:1, META:1, PARAM:1, SOURCE:1, TRACK:1, WBR:1 };
+  var lastIndex = 0;
+  var m;
+
+  while ((m = tagRegex.exec(html)) !== null) {
+    var full = m[0];
+    var isClose = full.charAt(1) === "/";
+    var tag = m[1].toUpperCase();
+    var attrs = m[2] || "";
+    var selfClose = full.endsWith("/>");
+    
+    out += html.substring(lastIndex, m.index);
+    lastIndex = tagRegex.lastIndex;
+
+    // In HTML5, </br> is treated as a start tag <br>
+    if (isClose && tag === "BR") {
+      isClose = false;
+    }
+
+    if (isClose) {
+      while (stack.length > 0) {
+        var top = stack.pop();
+        out += "</" + top.toLowerCase() + ">";
+        if (top === tag) break;
+      }
+    } else {
+      count++;
+      out += "<" + tag.toLowerCase() + attrs + ">";
+      if (!voidTags[tag] && !selfClose) {
+        stack.push(tag);
+      }
+    }
+  }
+  out += html.substring(lastIndex);
+
+  while (stack.length > 0) {
+    var top = stack.pop();
+    out += "</" + top.toLowerCase() + ">";
+  }
+
+  return { html: out, count: count };
+}
+
 function __makeHtmlElement(tag) {
   var state = { _innerHTML: '', _qsaCount: 0, _cssText: '', _srcdoc: '' };
   var styleObj = {};
@@ -59,8 +107,14 @@ function __makeHtmlElement(tag) {
     set: function(v){
       var key = String(v);
       var entry = __HTML_LOOKUP && __HTML_LOOKUP[key];
-      if (entry) { state._innerHTML = String(entry.html); state._qsaCount = entry.count | 0; }
-      else { state._innerHTML = key; state._qsaCount = 0; }
+      if (entry) {
+        state._innerHTML = String(entry.html);
+        state._qsaCount = entry.count | 0;
+      } else {
+        var parsed = __parseAndNormalizeHtml(key);
+        state._innerHTML = parsed.html;
+        state._qsaCount = parsed.count;
+      }
     },
     enumerable: true, configurable: true
   });
@@ -183,7 +237,19 @@ var window;
 window = __mkObj('window', {
   document: document,
   __DDG_BE_VERSION__: 1, __DDG_FE_CHAT_HASH__: 1,
-  navigator: __mkObj('navigator', { userAgent: __ua, webdriver: false, language: 'en-US', languages: ['en-US','en'], platform: 'MacIntel', vendor: 'Apple Computer, Inc.', appVersion: '5.0', cookieEnabled: true, onLine: true, hardwareConcurrency: 8, deviceMemory: 8 }),
+  navigator: __mkObj('navigator', {
+    userAgent: __ua,
+    webdriver: false,
+    language: 'en-US',
+    languages: ['en-US','en'],
+    platform: (__ua.indexOf('Win') !== -1 ? 'Win32' : (__ua.indexOf('Mac') !== -1 ? 'MacIntel' : 'Linux x86_64')),
+    vendor: (__ua.indexOf('Chrome') !== -1 ? 'Google Inc.' : (__ua.indexOf('Apple') !== -1 ? 'Apple Computer, Inc.' : '')),
+    appVersion: '5.0',
+    cookieEnabled: true,
+    onLine: true,
+    hardwareConcurrency: 8,
+    deviceMemory: 8
+  }),
   innerWidth: 1280, innerHeight: 800, outerWidth: 1280, outerHeight: 800, devicePixelRatio: 1,
   screen: __mkObj('screen', { width:1920, height:1080, availWidth:1920, availHeight:1080, colorDepth:24, pixelDepth:24 }),
   location: __mkObj('location', { href:'https://duckduckgo.com/', origin:'https://duckduckgo.com', host:'duckduckgo.com', hostname:'duckduckgo.com', protocol:'https:', pathname:'/', search:'', hash:'', port:'' }),

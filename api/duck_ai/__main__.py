@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+import argparse
+import sys
+
+from . import DuckChat, __version__, gpt5_mini, image_generation, list_models
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="p2d-duck",
+        description="Free DuckDuckGo AI Chat (duck.ai) client. No API key required.",
+    )
+    p.add_argument("-v", "--version", action="version", version=f"p2d-duck {__version__}")
+    p.add_argument(
+        "-m",
+        "--model",
+        default=gpt5_mini,
+        help="Model name or alias (e.g. gpt5_mini, gpt5_nano, claude, mistral, gpt_oss, image)",
+    )
+    p.add_argument(
+        "-e",
+        "--effort",
+        default=None,
+        help="Reasoning effort: 'fast' or 'reasoning' (reasoning models only)",
+    )
+    p.add_argument(
+        "--no-stream",
+        action="store_true",
+        help="Disable streaming output (collect full response first)",
+    )
+    p.add_argument(
+        "--retries",
+        type=int,
+        default=4,
+        help="Maximum retry attempts per request (default 4)",
+    )
+    p.add_argument(
+        "--history",
+        action="store_true",
+        help="Enable multi-turn chat history (default: disabled)",
+    )
+    sub = p.add_subparsers(dest="cmd")
+
+    chat = sub.add_parser("chat", help="Interactive chat (default)")
+    chat.add_argument("prompt", nargs="*", help="One-shot prompt; omit for REPL")
+    chat.add_argument("--image", help="Attach an image (path, data URL, or http(s) URL)")
+    chat.add_argument(
+        "--web-search",
+        action="store_true",
+        help="Enable WebSearch tool for this chat (model-dependent)",
+    )
+
+    image = sub.add_parser("image", help="Generate an image")
+    image.add_argument("prompt", nargs="+", help="Image prompt")
+    image.add_argument("-o", "--output", default="duck.jpg", help="Output file path")
+
+    edit = sub.add_parser("edit", help="Edit an image with a caption")
+    edit.add_argument("prompt", nargs="+", help="Edit instruction (caption)")
+    edit.add_argument("--image", required=True, help="Source image (path, data URL, or http(s) URL)")
+    edit.add_argument("-o", "--output", default="duck-edit.jpg", help="Output file path")
+
+    sub.add_parser("models", help="List known model ids")
+
+    return p
+
+
+def load_image(spec: str):
+    from .models import ImagePart
+
+    if spec.startswith("data:"):
+        return ImagePart(image=spec)
+    if spec.startswith(("http://", "https://")):
+        import urllib.request
+        with urllib.request.urlopen(spec) as r:
+            data = r.read()
+            mt = r.headers.get_content_type() or "image/png"
+            return ImagePart.from_bytes(data, mime_type=mt)
+    return ImagePart.from_path(spec)
+
+
+def make_client(args) -> DuckChat:
+    return DuckChat(
+        model=args.model,
+        effort=args.effort,
+        max_retries=args.retries,
+        history=bool(getattr(args, "history", False)),
+    )
+
+
+def run_chat(args: argparse.Namespace) -> int:
+    duck = make_client(args)
+    web = bool(getattr(args, "web_search", False))
+    if args.prompt:
+        prompt = " ".join(args.prompt)
+        try:
+            if args.image:
+                if args.no_stream:
+                    print(duck.ask_with_image(prompt, args.image, web_search=web))
+                else:
+                    for chunk in duck.stream([prompt, load_image(args.image)], web_search=web):
+                        print(chunk, end="", flush=True)
+                    print()
+            else:
+                if args.no_stream:
+                    print(duck.ask(prompt, web_search=web))
+                else:
+                    for chunk in duck.stream(prompt, web_search=web):
+                        print(chunk, end="", flush=True)
+                    print()
+        finally:
+            duck.close()
+        return 0
+    hist_state = "on" if duck.history_enabled else "off"
+    print(
+        f"p2d-duck {__version__} ({args.model}) [history: {hist_state}] - "
+        "type /reset, /history on|off, /quit"
+    )
+    try:
+        while True:
+            try:
+                line = input("you> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                break
+            if not line:
+                continue
+            if line in ("/q", "/quit", "/exit"):
+                break
+            if line in ("/r", "/reset"):
+                duck.reset()
+                print("(history cleared)")
+                continue
+            if line.startswith("/history"):
+                parts = line.split()
+                if len(parts) == 1:
+                    state = "on" if duck.history_enabled else "off"
+                    print(f"(history: {state})")
+                elif parts[1] in ("on", "1", "true", "enable"):
+                    duck.enable_history()
+                    print("(history: on)")
+                elif parts[1] in ("off", "0", "false", "disable"):
+                    duck.disable_history()
+                    print("(history: off, cleared)")
+                else:
+                    print("usage: /history [on|off]")
+                continue
+            try:
+                print("ai> ", end="", flush=True)
+                if args.no_stream:
+                    print(duck.ask(line, web_search=web))
+                else:
+                    for chunk in duck.stream(line, web_search=web):
+                        print(chunk, end="", flush=True)
+                    print()
+            except Exception as e:
+                print(f"\n[error] {e}")
+    finally:
+        duck.close()
+    return 0
+
+
+def run_image(args: argparse.Namespace) -> int:
+    prompt = " ".join(args.prompt)
+    duck = DuckChat(model=image_generation, max_retries=args.retries)
+    try:
+        data = duck.generate_image(prompt, save_to=args.output)
+        print(f"saved {len(data)} bytes -> {args.output}")
+    finally:
+        duck.close()
+    return 0
+
+
+def run_edit(args: argparse.Namespace) -> int:
+    prompt = " ".join(args.prompt)
+    duck = DuckChat(model=image_generation, max_retries=args.retries)
+    try:
+        part = load_image(args.image)
+        data = duck.edit_image(prompt, part, save_to=args.output)
+        print(f"saved {len(data)} bytes -> {args.output}")
+    finally:
+        duck.close()
+    return 0
+
+
+def run_models(args: argparse.Namespace) -> int:
+    for m in list_models():
+        print(m)
+    return 0
+
+
+def main(argv=None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.cmd == "image":
+        return run_image(args)
+    if args.cmd == "edit":
+        return run_edit(args)
+    if args.cmd == "models":
+        return run_models(args)
+    return run_chat(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -14,7 +14,7 @@ _SHARED_CHAT = None
 def _get_chat_client(model=None) -> DuckChat:
     global _SHARED_CHAT
     if _SHARED_CHAT is None:
-        _SHARED_CHAT = DuckChat()
+        _SHARED_CHAT = DuckChat(effort="reasoning")
     return _SHARED_CHAT
 
 
